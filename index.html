@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>単語トレーナー</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+/* Layout: one column app. Home, quiz, result and box are rendered into #app one at a time. */
+:root {
+  --bg: #eef1f5;
+  --surface: #ffffff;
+  --fg: #1a2230;
+  --muted: #5d6877;
+  --line: #d6dce5;
+  --accent: #2f5fd0;
+  --accent-fg: #ffffff;
+  --accent-soft: #e3ebfb;
+  --box: #a8661a;
+  --box-soft: #f8ead7;
+  --good: #1f7a4d;
+  --good-soft: #dcf2e5;
+  --bad: #b3332b;
+  --bad-soft: #f9e2df;
+  --font-body: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", "Meiryo", system-ui, sans-serif;
+  --font-word: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161e; --surface: #1a212c; --fg: #e5eaf1; --muted: #98a4b4; --line: #2b3544;
+    --accent: #7ba1ff; --accent-fg: #0b1220; --accent-soft: #223356;
+    --box: #e0a45c; --box-soft: #3a2c19;
+    --good: #5fcf94; --good-soft: #17382a; --bad: #ff8a80; --bad-soft: #43221f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161e; --surface: #1a212c; --fg: #e5eaf1; --muted: #98a4b4; --line: #2b3544;
+  --accent: #7ba1ff; --accent-fg: #0b1220; --accent-soft: #223356;
+  --box: #e0a45c; --box-soft: #3a2c19;
+  --good: #5fcf94; --good-soft: #17382a; --bad: #ff8a80; --bad-soft: #43221f;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.6;
+  padding-block: max(20px, env(safe-area-inset-top, 0px)) max(48px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+#app { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1, h2, h3, p { margin: 0; }
+h1 { font-size: 24px; line-height: 1.3; }
+.sub { color: var(--muted); font-size: 13px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 13px 16px; min-height: 48px; font-weight: 700; text-align: center; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn.boxy { border-color: var(--box); color: var(--box); }
+.btn.small { min-height: 38px; padding: 7px 12px; font-size: 13px; border-radius: 8px; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.link { background: none; border: 0; color: var(--accent); padding: 6px 0; font-weight: 700; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.row > .btn { flex: 1 1 150px; }
+.stats { display: flex; gap: 20px; flex-wrap: wrap; }
+.stats div { display: flex; flex-direction: column; }
+.stats b { font-family: var(--font-word); font-size: 22px; font-variant-numeric: tabular-nums; }
+.stats span { font-size: 12px; color: var(--muted); }
+label.field { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+select { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); }
+details summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
+details > div { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.note { font-size: 12px; color: var(--muted); }
+.msg { font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); }
+
+.qhead { display: flex; align-items: center; gap: 12px; }
+.qhead .count { font-family: var(--font-word); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.track { flex: 1; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.fill { height: 100%; background: var(--accent); }
+.meta { display: flex; gap: 8px; align-items: center; }
+.chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.chip.box { background: var(--box-soft); color: var(--box); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+.word { font-family: var(--font-word); font-size: 32px; line-height: 1.2; font-weight: 700; overflow-wrap: anywhere; }
+.choices { display: grid; gap: 8px; }
+.choice { display: flex; gap: 12px; align-items: flex-start; text-align: left; border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 12px; min-height: 52px; width: 100%; }
+.choice .k { font-family: var(--font-word); font-size: 12px; min-width: 22px; height: 22px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; background: var(--surface); border: 1px solid var(--line); color: var(--muted); margin-top: 1px; }
+.choice .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.choice.good { border-color: var(--good); background: var(--good-soft); }
+.choice.bad { border-color: var(--bad); background: var(--bad-soft); }
+.choice[disabled] { cursor: default; }
+.flag { display: flex; gap: 10px; align-items: center; background: none; border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; text-align: left; width: 100%; font-size: 14px; }
+.flag .cb { width: 22px; height: 22px; border-radius: 6px; border: 2px solid var(--muted); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; color: transparent; flex: none; }
+.flag[aria-checked="true"] { border: 1px solid var(--box); background: var(--box-soft); }
+.flag[aria-checked="true"] .cb { background: var(--box); border-color: var(--box); color: #fff; }
+.feedback { display: flex; flex-direction: column; gap: 10px; }
+.verdict { padding: 10px 12px; border-radius: 10px; font-weight: 700; }
+.verdict.ok { background: var(--good-soft); color: var(--good); }
+.verdict.ng { background: var(--bad-soft); color: var(--bad); }
+.verdict span { display: block; font-weight: 400; color: var(--fg); margin-top: 2px; }
+
+.score b { font-family: var(--font-word); font-size: 40px; font-variant-numeric: tabular-nums; }
+.list { display: flex; flex-direction: column; }
+.item { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; padding: 10px 0; border-top: 1px solid var(--line); align-items: start; }
+.item:first-child { border-top: 0; }
+.item .mark { font-weight: 700; width: 20px; text-align: center; }
+.item .mark.ok { color: var(--good); }
+.item .mark.ng { color: var(--bad); }
+.item .w { font-family: var(--font-word); font-weight: 700; overflow-wrap: anywhere; }
+.item .m { color: var(--muted); font-size: 13px; grid-column: 2; }
+.item .chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.empty { color: var(--muted); padding: 12px 0; }
+@media (prefers-reduced-motion: no-preference) { .fill { transition: width .2s; } }
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+(function () {
+  "use strict";
+  var WORDS_DEFAULT = [["abate","v","（勢いが）弱まる、和らぐ"],["abdicate","v","（王位・権利を）放棄する、退位する"],["aberration","n","逸脱、異常"],["abhorrent","adj","忌まわしい、嫌悪をもよおす"],["abject","adj","惨めな、卑屈な"],["ablaze","adj","燃え上がって、輝いて"],["abominable","adj","実にひどい、忌まわしい"],["abomination","n","嫌悪すべきもの、憎悪"],["abort","v","中止する、中絶する"],["aboveboard","adj","公明正大な、偽りのない"],["abrasive","adj","研磨性の、とげとげしい"],["abridged","adj","要約された、短縮された"],["abrogate","v","（法律・協定を）廃止する"],["abruptly","adv","突然に、ぶっきらぼうに"],["abscond","v","（金などを持って）逃亡する"],["absolve","v","（罪・責任を）免除する"],["abstention","n","棄権、控えること"],["absurdity","n","ばかばかしさ、不合理"],["abundance","n","豊富、大量"],["abuse","n","虐待、乱用"],["abyss","n","深淵、奈落"],["accelerate","v","加速する、促進する"],["accentuate","v","強調する、際立たせる"],["acclaim","v","称賛する、絶賛する"],["accomplice","n","共犯者"],["accost","v","（見知らぬ人に）声をかける、詰め寄る"],["accrue","v","（利益・利子が）生じる、たまる"],["accusation","n","告発、非難"],["acquittal","n","無罪判決"],["acrimony","n","辛辣さ、険悪さ"],["acute","adj","鋭い、深刻な、急性の"],["adamant","adj","断固とした、頑固な"],["addendum","n","補遺、追加事項"],["addictive","adj","中毒性のある"],["address","v","取り組む、演説する"],["adept","adj","熟達した"],["adequate","adj","十分な、適切な"],["adherent","n","支持者、信奉者"],["adjacent","adj","隣接した"],["adjourn","v","休会する、延期する"],["adjudicate","v","裁定する、判決を下す"],["adjunct","n","付属物、補助"],["administer","v","管理する、（薬を）投与する"],["admonish","v","戒める、諭す"],["adolescent","n","思春期の若者"],["adorn","v","飾る"],["adroit","adj","巧みな、器用な"],["adulation","n","過度の称賛、へつらい"],["advent","n","到来、出現"],["adversarial","adj","敵対的な、対立する"],["advocate","v","擁護する、主張する"],["aesthetically","adv","美的に、審美的に"],["affability","n","愛想のよさ、人当たりのよさ"],["affable","adj","愛想のよい、気さくな"],["affidavit","n","宣誓供述書"],["affiliation","n","提携、所属"],["affinity","n","親近感、類似性"],["affix","v","貼り付ける、添える"],["affliction","n","苦悩、苦痛の原因"],["affluent","adj","裕福な"],["affront","n","侮辱"],["agape","adj","（驚きで）口をぽかんと開けた"],["agenda","n","議題、予定表、隠れた意図"],["aggravate","v","悪化させる、いらだたせる"],["agility","n","敏捷さ"],["agitate","v","動揺させる、扇動する"],["agnostic","n","不可知論者"],["agonize","v","苦悩する、ひどく悩む"],["agrarian","adj","農業の、土地の"],["ailment","n","（軽い）病気"],["alacrity","n","機敏さ、乗り気"],["alienate","v","疎遠にする"],["alienation","n","疎外、疎遠"],["alignment","n","整列、連携"],["allay","v","（不安・恐れを）和らげる"],["allegory","n","寓話、たとえ話"],["alleviate","v","軽減する、和らげる"],["alliance","n","同盟、提携"],["allocate","v","割り当てる"],["allude","v","ほのめかす、言及する"],["allure","n","魅力"],["aloof","adj","よそよそしい、超然とした"],["altruism","n","利他主義"],["altruistic","adj","利他的な"],["ambient","adj","周囲の"],["ambiguous","adj","あいまいな"],["ambivalence","n","相反する感情、両面価値"],["ambivalent","adj","相反する感情を抱いた"],["ambush","n","待ち伏せ"],["ameliorate","v","改善する"],["amenable","adj","従順な、受け入れやすい"],["amend","v","修正する"],["amendment","n","修正、改正"],["amenity","n","快適な設備、生活を便利にするもの"],["amicable","adj","友好的な"],["amity","n","友好関係"],["amnesty","n","恩赦"],["amplify","v","増幅する、拡大する"],["anachronism","n","時代錯誤"],["analogous","adj","類似した"],["anatomy","n","解剖学、構造"],["anemic","adj","貧血の、活力のない"],["anesthetic","n","麻酔薬"],["animosity","n","敵意"],["annihilate","v","全滅させる"],["annihilation","n","全滅"],["annotation","n","注釈"],["annulment","n","（結婚などの）無効、取り消し"],["anoint","v","（油を塗って）聖別する"],["anonymous","adj","匿名の"],["antagonistic","adj","敵対的な"],["antagonize","v","敵に回す、反感を買う"],["antibiotic","n","抗生物質"],["antipathy","n","反感、嫌悪"],["apathetic","adj","無関心な"],["apathy","n","無関心"],["apex","n","頂点"],["appalled","adj","ぞっとした、愕然とした"],["apparition","n","幽霊、幻影"],["appease","v","なだめる、宥和する"],["append","v","付け加える"],["apprehend","v","逮捕する、理解する"],["aptitude","n","素質、適性"],["arbitrary","adj","恣意的な、独断的な"],["arbitrate","v","仲裁する"],["arcane","adj","難解な、秘密の"],["archaeologist","n","考古学者"],["archaic","adj","古風な、時代遅れの"],["arduous","adj","骨の折れる"],["array","n","ずらりと並んだもの、配列"],["arrears","n","滞納金、遅れ"],["arrogant","adj","傲慢な"],["artifact","n","人工物、遺物"],["ascension","n","上昇、昇天"],["ascetic","adj","禁欲的な"],["askew","adj","斜めの、曲がった"],["assail","v","猛攻撃する、非難する"],["assault","n","暴行、猛攻撃"],["assertive","adj","自己主張の強い"],["assessment","n","評価、査定"],["asset","n","資産、強み"],["assiduous","adj","勤勉な、精励な"],["assimilate","v","吸収する、同化する"],["astound","v","仰天させる"],["astute","adj","抜け目のない、鋭敏な"],["asylum","n","亡命、保護施設"],["atheist","n","無神論者"],["atrocity","n","残虐行為"],["attenuate","v","弱める、薄める"],["attic","n","屋根裏部屋"],["attribute","v","（原因を）〜のせいにする"],["attuned","adj","調和した、慣れた"],["audacity","n","大胆さ、厚かましさ"],["auditorium","n","講堂"],["augment","v","増大させる"],["auspice","n","前兆、後援"],["auspicious","adj","幸先のよい"],["austere","adj","厳格な、簡素な"],["authentic","adj","本物の"],["authoritative","adj","権威のある"],["autism","n","自閉症"],["autonomy","n","自治、自主性"],["autopsy","n","検死解剖"],["avarice","n","強欲"],["averse","adj","嫌って、反対して"],["aversion","n","嫌悪"],["avert","v","避ける、そらす"],["avid","adj","熱心な"],["axis","n","軸"],["backlash","n","激しい反発"],["backlog","n","（仕事などの）滞留、積み残し"],["baffle","v","当惑させる"],["bail","n","保釈（金）"],["balance","n","均衡、残高"],["balk","v","ためらう、尻込みする"],["ballot","n","投票（用紙）"],["banal","adj","平凡な、ありふれた"],["banish","v","追放する"],["bankruptcy","n","破産"],["banter","n","冗談の言い合い"],["barrage","n","集中砲火、連発"],["barren","adj","不毛の"],["bask","v","（日光に）浴する、ひたる"],["beckon","v","手招きする、誘う"],["bedraggled","adj","ずぶぬれの、薄汚れた"],["beguile","v","魅惑する、だます"],["belittle","v","見くびる、軽んじる"],["bellicose","adj","好戦的な"],["belligerent","adj","敵対的な、好戦的な"],["bemoan","v","嘆く"],["benchmark","n","基準"],["benediction","n","祝福"],["benefactor","n","恩人、後援者"],["beneficiary","n","受益者"],["benevolently","adv","慈悲深く、親切に"],["benign","adj","良性の、優しい"],["bent","n","傾向、素質"],["berate","v","厳しく叱る"],["bereave","v","（死別で）奪う、遺族にする"],["berserk","adj","逆上した、狂暴な"],["bestow","v","授ける"],["bewitched","adj","魅了された"],["bias","n","偏見"],["bibliography","n","参考文献一覧"],["bigot","n","頑固な偏見の持ち主"],["bionic","adj","生体工学の"],["bizarre","adj","奇妙な"],["blanch","v","青ざめる、さっとゆでる"],["bland","adj","味気ない、おとなしい"],["blasphemy","n","冒涜"],["blatantly","adv","露骨に"],["bleak","adj","荒涼とした、暗い"],["blemish","n","欠点、傷"],["blissful","adj","至福の"],["blister","n","水ぶくれ"],["bluff","v","はったりをかける"],["blunder","n","大失敗"],["bluntly","adv","ぶっきらぼうに"],["blur","v","ぼやけさせる"],["blurt","v","うっかり口走る"],["boisterous","adj","騒々しい、威勢のよい"],["bolster","v","強化する、支える"],["bombard","v","爆撃する、浴びせる"],["boon","n","恩恵"],["bountiful","adj","豊富な、惜しみない"],["bounty","n","報奨金、豊かな恵み"],["bout","n","（短期間の）発作、一試合"],["brandish","v","（脅すように）振りかざす"],["brawl","n","乱闘"],["breakthrough","n","飛躍的進歩"],["brevity","n","簡潔さ、短さ"],["bribery","n","贈収賄"],["brink","n","瀬戸際、縁"],["broach","v","（話題を）切り出す"],["brunt","n","矢面、主な衝撃"],["bucolic","adj","田園の、牧歌的な"],["buffer","n","緩衝材"],["bungling","adj","不器用な、へまな"],["bunker","n","掩蔽壕、地下壕"],["buoyant","adj","浮力のある、快活な"],["burgeon","v","急成長する"],["burnished","adj","磨かれた"],["cagey","adj","用心深い、口の堅い"],["cajole","v","甘言で説得する"],["calamity","n","大災害"],["caliber","n","（人の）力量、口径"],["camaraderie","n","仲間意識"],["candid","adj","率直な"],["candor","n","率直さ"],["canvass","v","（票を求めて）遊説する、調査する"],["capitulate","v","降伏する"],["capricious","adj","気まぐれな"],["captivation","n","魅了"],["captive","n","捕虜"],["cardinal","adj","最も重要な、基本の"],["cardiovascular","adj","心臓血管の"],["caricature","n","風刺画、戯画"],["carnivorous","adj","肉食性の"],["catalyst","n","触媒、きっかけ"],["catastrophe","n","大惨事"],["catastrophically","adv","壊滅的に"],["caustic","adj","辛辣な、腐食性の"],["cavernous","adj","洞窟のような、巨大な空洞の"],["cease","v","やめる"],["celibate","adj","独身の、禁欲の"],["censure","v","非難する"],["cerebral","adj","脳の、知的な"],["certitude","n","確信"],["cessation","n","停止"],["chafe","v","すりむく、いらだつ"],["chaotic","adj","混沌とした"],["charade","n","見え透いた芝居、茶番"],["charlatan","n","ペテン師"],["chasten","v","懲らしめる、戒める"],["chronic","adj","慢性的な"],["chronicle","n","年代記"],["cinch","n","簡単なこと"],["cipher","n","暗号"],["circulate","v","循環する、広まる"],["circumlocution","n","遠回しな言い方"],["circumstantial","adj","状況的な、状況証拠の"],["circumvent","v","回避する、かいくぐる"],["claim","v","主張する、要求する"],["clairvoyant","n","千里眼の人、透視能力者"],["clamor","n","騒ぎ、大声での要求"],["clandestine","adj","秘密の"],["clarify","v","明確にする"],["classified","adj","機密の"],["clemency","n","寛大さ、情け"],["clench","v","握りしめる、食いしばる"],["clique","n","派閥、徒党"],["clobber","v","ぶちのめす"],["clout","n","影響力"],["clump","n","塊、茂み"],["clumsy","adj","不器用な"],["cluster","n","集団、房"],["clutter","n","散らかったもの"],["coalition","n","連立、連合"],["coarse","adj","粗い、粗野な"],["coax","v","なだめすかして〜させる"],["coerce","v","強制する"],["coffer","n","金庫、（複数で）資金"],["cogitate","v","熟考する"],["cognition","n","認識"],["cognitive","adj","認知の"],["coherent","adj","筋の通った、首尾一貫した"],["cohesive","adj","結束した"],["coincidence","n","偶然の一致"],["collaborate","v","協力する"],["collation","n","照合、軽食"],["collision","n","衝突"],["coma","n","昏睡状態"],["combustion","n","燃焼"],["commence","v","始める"],["commensurate","adj","釣り合った"],["commiserate","v","同情する、哀れむ"],["commitment","n","約束、献身"],["commodity","n","商品、日用品"],["commonplace","adj","ありふれた"],["commotion","n","騒動"],["communal","adj","共同の"],["commutation","n","（刑の）減刑、通勤"],["compassion","n","思いやり"],["compatible","adj","両立できる、互換性のある"],["compile","v","編集する、集める"],["complacency","n","自己満足"],["complex","adj","複雑な"],["compliance","n","遵守"],["complicity","n","共謀、共犯"],["composure","n","落ち着き"],["comprehensive","adj","包括的な"],["compunction","n","良心の呵責"],["concede","v","認める、譲歩する"],["conceit","n","うぬぼれ"],["concession","n","譲歩、特権"],["conciliatory","adj","なだめるような、融和的な"],["concoct","v","でっち上げる、調合する"],["concur","v","同意する"],["concussion","n","脳震盪"],["condemnation","n","非難、有罪宣告"],["condescending","adj","見下したような"],["condescension","n","見下した態度"],["condolence","n","お悔やみ"],["condone","v","大目に見る、容認する"],["conducive","adj","助けになる、寄与する"],["confer","v","協議する、授与する"],["confidential","adj","機密の"],["configuration","n","配置、構成"],["confinement","n","監禁、閉じ込め"],["confiscate","v","没収する"],["confiscation","n","没収"],["conflagration","n","大火事"],["conformist","n","順応主義者"],["confound","v","混乱させる"],["confrontational","adj","対決的な"],["conglomerate","n","複合企業"],["congregate","v","集まる"],["conjecture","n","推測"],["conjugate","v","（動詞を）活用させる"],["connotation","n","含意、言外の意味"],["conscience","n","良心"],["conscription","n","徴兵"],["consecrate","v","神聖にする、捧げる"],["consecration","n","神聖化、奉納"],["consequently","adv","その結果"],["consign","v","委ねる、送り届ける"],["consignment","n","委託（品）、積荷"],["consolidate","v","統合する、固める"],["consort","v","付き合う"],["consortium","n","共同事業体"],["conspicuous","adj","目立つ"],["conspiracy","n","陰謀"],["constellation","n","星座"],["constituency","n","選挙区、支持層"],["constitutional","adj","憲法の、体質的な"],["constriction","n","締めつけ、収縮"],["consummate","adj","完璧な、熟達した"],["contagious","adj","伝染性の"],["contaminate","v","汚染する"],["contamination","n","汚染"],["contemplate","v","熟考する"],["contemplative","adj","瞑想的な、思慮深い"],["contemporary","adj","現代の、同時代の"],["contend","v","主張する、競う"],["contentious","adj","議論を呼ぶ、好戦的な"],["contiguous","adj","隣接した"],["contingency","n","不測の事態"],["contingent","adj","〜次第の、偶発的な"],["contraband","n","密輸品"],["contradict","v","矛盾する、否定する"],["contradictory","adj","矛盾した"],["contraption","n","奇妙な装置"],["contravene","v","（法・規則に）違反する"],["contrivance","n","工夫、策略"],["contrive","v","考案する、たくらむ"],["controversial","adj","論争を呼ぶ"],["conventional","adj","従来の、慣習的な"],["conversion","n","転換、改宗"],["conveyance","n","輸送、乗り物"],["convict","v","有罪とする"],["conviction","n","確信、有罪判決"],["conviviality","n","陽気さ、宴会気分"],["copious","adj","豊富な"],["corroborate","v","裏付ける"],["corrode","v","腐食させる"],["corrosive","adj","腐食性の"],["cortex","n","皮質、大脳皮質"],["counterfeit","adj","偽造の"],["counterfeiter","n","偽造者"],["counterpart","n","対応する人（物）"],["countless","adj","数えきれない"],["courier","n","配達人、運送業者"],["cove","n","入り江"],["coverage","n","報道、補償範囲"],["covert","adj","隠れた、秘密の"],["cozy","adj","居心地のよい"],["crabby","adj","気難しい"],["cramp","n","けいれん、さしこみ"],["craze","n","大流行"],["credibility","n","信頼性"],["credulity","n","だまされやすさ"],["creed","n","信条"],["cringe","v","ひるむ、身がすくむ"],["criterion","n","基準"],["critical","adj","批判的な、重大な"],["crucial","adj","極めて重要な"],["crude","adj","粗野な、未精製の"],["crunch","n","危機、（むしゃむしゃ）かむ音"],["crux","n","核心"],["cryptic","adj","謎めいた"],["culmination","n","頂点、極致"],["culpability","n","有罪性、罪"],["culpable","adj","責められるべき"],["culprit","n","犯人"],["cumulative","adj","累積的な"],["curb","v","抑制する"],["curfew","n","夜間外出禁止令、門限"],["cursory","adj","ざっとした、おざなりの"],["curtail","v","削減する、切り詰める"],["curtly","adv","ぶっきらぼうに"],["custody","n","保護、親権、拘留"],["dainty","adj","繊細な、上品な"],["dangle","v","ぶら下がる、ぶら下げる"],["dart","v","素早く動く、突進する"],["daunting","adj","ひるませるような"],["dawdle","v","ぐずぐずする"],["dazzle","v","目をくらませる、感嘆させる"],["dearth","n","不足"],["debacle","n","大失敗"],["debar","v","締め出す、禁じる"],["debase","v","品位を落とす"],["debilitate","v","衰弱させる"],["debit","n","借方、引き落とし"],["debris","n","残骸"],["debtor","n","債務者"],["debunk","v","（誤りを）暴く"],["decadence","n","退廃"],["decant","v","（ワインなどを）別の容器に移す"],["decay","v","腐敗する、衰える"],["deceased","adj","亡くなった"],["decent","adj","まともな、きちんとした"],["deceptive","adj","人を欺くような"],["decimate","v","大量に殺す、壊滅させる"],["decipher","v","解読する"],["decorum","n","礼儀、品位"],["decoy","n","おとり"],["decree","n","法令、命令"],["decrepit","adj","老朽化した、老いぼれた"],["decry","v","非難する"],["deduce","v","推論する"],["deduction","n","推論、控除"],["deface","v","（外観を）損なう"],["de facto","adj","事実上の"],["defamatory","adj","中傷的な"],["defame","v","中傷する"],["defector","n","亡命者、離反者"],["deference","n","敬意、服従"],["deferential","adj","敬意を表する"],["deferment","n","延期"],["defiance","n","反抗"],["deficiency","n","不足、欠陥"],["deficit","n","赤字"],["deflect","v","そらす"],["defraud","v","だまし取る"],["defunct","adj","消滅した、機能していない"],["defuse","v","（危機を）和らげる、信管を外す"],["defy","v","反抗する、無視する"],["deity","n","神"],["delegation","n","代表団、委任"],["deliberation","n","熟慮、審議"],["delineate","v","詳細に描写する、線引きする"],["delineation","n","描写、輪郭"],["deluge","n","大洪水、殺到"],["delusion","n","妄想、思い込み"],["delve","v","掘り下げて調べる"],["demean","v","品位を落とす"],["demeanor","n","態度、振る舞い"],["demise","n","死、終焉"],["demographic","adj","人口統計の"],["demolition","n","取り壊し"],["demoralized","adj","士気をくじかれた"],["demur","v","異議を唱える"],["demure","adj","慎み深い、おとなしい"],["denigrate","v","けなす"],["denomination","n","宗派、額面"],["denote","v","意味する、示す"],["denounce","v","非難する"],["dense","adj","密集した、濃い"],["depiction","n","描写"],["deplete","v","使い果たす"],["depletion","n","枯渇"],["deplorable","adj","嘆かわしい"],["deploy","v","配備する"],["deportation","n","国外追放"],["deprecate","v","非難する、軽視する"],["deprivation","n","剝奪、窮乏"],["deputy","n","代理人、副官"],["deregulate","v","規制を緩和する"],["derelict","adj","見捨てられた、職務怠慢の"],["deride","v","あざ笑う"],["derision","n","嘲笑"],["derisive","adj","嘲笑的な"],["derive","v","引き出す、由来する"],["derogatory","adj","軽蔑的な"],["descendant","n","子孫"],["despicable","adj","卑劣な"],["despondent","adj","落胆した"],["destined","adj","運命づけられた"],["destitute","adj","極貧の"],["destitution","n","極貧"],["detain","v","拘留する、引き止める"],["detect","v","発見する"],["detention","n","拘留、居残り"],["deter","v","思いとどまらせる"],["deteriorate","v","悪化する"],["detest","v","ひどく嫌う"],["detonate","v","爆発させる"],["detour","n","迂回路"],["detract","v","（価値を）損なう、減じる"],["detriment","n","損害"],["detrimental","adj","有害な"],["devastate","v","荒廃させる"],["devastation","n","荒廃"],["deviate","v","逸脱する"],["deviation","n","逸脱"],["devious","adj","ずる賢い、遠回りの"],["devoid","adj","欠いている"],["devout","adj","信心深い"],["dexterity","n","器用さ"],["diabolic","adj","悪魔のような"],["diagnose","v","診断する"],["diagnosis","n","診断"],["diameter","n","直径"],["diatribe","n","痛烈な非難"],["dice","v","さいの目に切る"],["dictum","n","断言、格言"],["diffident","adj","自信のない、内気な"],["diffuse","v","拡散させる"],["dilapidated","adj","荒れ果てた"],["dimension","n","次元、寸法"],["diminish","v","減少させる"],["diminutive","adj","小柄な、ごく小さい"],["disarmament","n","軍縮"],["disavow","v","否認する"],["disband","v","解散する"],["discard","v","捨てる"],["discern","v","見分ける"],["discernible","adj","識別できる"],["discharge","v","解雇する、放出する"],["disciplinary","adj","懲戒の、規律の"],["disconcerting","adj","当惑させる"],["discontent","n","不満"],["discourse","n","談話、論説"],["discreet","adj","慎重な"],["discrepancy","n","食い違い"],["disdain","n","軽蔑"],["disgruntled","adj","不満な"],["disguise","v","変装させる、隠す"],["disgust","n","嫌悪"],["disheveled","adj","乱れた、だらしない"],["dislodge","v","取り除く、追い出す"],["dismal","adj","憂鬱な、惨めな"],["dismantle","v","解体する"],["dismiss","v","解雇する、退ける"],["dismissive","adj","見下した、取り合わない"],["disoriented","adj","方向感覚を失った"],["disparage","v","けなす"],["disparate","adj","まったく異なる"],["disparity","n","格差"],["dispatch","v","派遣する、発送する"],["dispel","v","追い払う"],["dispensable","adj","なくてもよい"],["dispensation","n","免除、分配"],["disperse","v","分散させる、散る"],["dispirited","adj","落胆した"],["displace","v","追い出す、取って代わる"],["disposal","n","処分"],["disposition","n","気質、傾向"],["disproportionately","adv","不釣り合いに"],["dispute","n","論争"],["disrupt","v","混乱させる、妨げる"],["dissect","v","解剖する、分析する"],["dissemble","v","本心を隠す"],["disseminate","v","広める"],["dissension","n","意見の相違、不和"],["dissenting","adj","反対意見の"],["dissertation","n","博士論文"],["dissident","n","反体制派"],["dissipate","v","消散する、浪費する"],["dissolution","n","解消、解散"],["dissonance","n","不協和音、不調和"],["dissuade","v","思いとどまらせる"],["distend","v","膨らませる"],["distinct","adj","はっきりした、別個の"],["distractedly","adv","気もそぞろに"],["distraught","adj","取り乱した"],["distressing","adj","苦痛を与える"],["ditch","v","見捨てる"],["diverge","v","分岐する、逸れる"],["diverse","adj","多様な"],["diversify","v","多様化する"],["diversion","n","気晴らし、迂回"],["diversity","n","多様性"],["divert","v","そらす、転用する"],["dividend","n","配当"],["divine","adj","神の、神々しい"],["divulgence","n","漏洩、暴露"],["docile","adj","従順な"],["dogmatic","adj","独断的な"],["dormant","adj","休眠中の"],["downplay","v","軽視する"],["drab","adj","くすんだ、単調な"],["drain","v","排出する、消耗させる"],["drastically","adv","劇的に"],["drawback","n","欠点"],["drawl","n","ゆっくりした間延びした話し方"],["dreary","adj","陰気な、退屈な"],["drench","v","びしょ濡れにする"],["dribble","v","したたる、ドリブルする"],["droll","adj","おどけた、滑稽な"],["dub","v","あだ名をつける、吹き替える"],["dubious","adj","疑わしい"],["dues","n","会費、当然支払うべきもの"],["dupe","v","だます"],["duplicate","v","複製する"],["duplicity","n","二枚舌、不誠実"],["durability","n","耐久性"],["duration","n","持続期間"],["dutifully","adv","忠実に、従順に"],["dwindle","v","だんだん減る"],["dynasty","n","王朝"],["ebb","v","引く、衰える"],["ebullience","n","熱狂、沸き立つ熱意"],["echelon","n","階層、地位"],["eclipse","v","影を薄くする、日食を起こす"],["ecstatic","adj","有頂天の"],["edible","adj","食べられる"],["edify","v","啓発する、教化する"],["eerie","adj","不気味な"],["efficacious","adj","効き目のある"],["efficacy","n","有効性"],["effigy","n","人形、肖像"],["elaborate","adj","入念な、手の込んだ"],["electoral","adj","選挙の"],["elevation","n","高さ、昇進"],["elicit","v","引き出す"],["eligible","adj","資格のある"],["elimination","n","除去"],["elocution","n","話術、発声法"],["elongate","v","引き伸ばす"],["eloquent","adj","雄弁な"],["elucidate","v","明らかにする"],["elude","v","逃れる、理解できない"],["elusive","adj","つかまえにくい"],["emaciated","adj","やせ衰えた"],["emanate","v","発散する、放つ"],["emancipate","v","解放する"],["embargo","n","禁輸、通商停止"],["embark","v","乗り出す、乗船する"],["embedded","adj","埋め込まれた"],["embezzle","v","横領する"],["emblazon","v","飾る、大きく描く"],["embody","v","体現する"],["embolden","v","大胆にさせる"],["embrace","v","抱きしめる、受け入れる"],["embroil","v","巻き込む"],["embryo","n","胚、萌芽"],["emigrate","v","（他国へ）移住する"],["eminence","n","高名、卓越"],["empathic","adj","共感できる"],["empathize","v","共感する"],["emphatic","adj","断固とした、強調された"],["empirically","adv","経験的に"],["empower","v","権限を与える"],["emulate","v","見習う、まねる"],["enact","v","制定する、演じる"],["encapsulate","v","要約する、カプセルに入れる"],["encompass","v","包含する、取り囲む"],["encroach","v","侵害する、侵入する"],["encrypt","v","暗号化する"],["encumber","v","妨げる、負担をかける"],["endemic","adj","（地域に）固有の、風土性の"],["endorse","v","支持する、裏書きする"],["endow","v","（才能などを）授ける、寄付する"],["endowment","n","寄付金、天賦の才"],["enforce","v","施行する、強制する"],["enforcement","n","施行、取り締まり"],["engender","v","引き起こす"],["engrossed","adj","夢中になった"],["engulf","v","飲み込む"],["enhance","v","高める"],["enlighten","v","啓発する"],["enormous","adj","巨大な"],["enroll","v","登録する、入学する"],["ensue","v","続いて起こる"],["entail","v","伴う"],["entice","v","誘惑する、そそのかす"],["enticement","n","誘惑、誘い"],["entity","n","実体、存在"],["entreaty","n","懇願"],["entrench","v","定着させる、固める"],["entrepreneur","n","起業家"],["entrust","v","委ねる"],["enumerate","v","列挙する"],["enunciate","v","はっきり発音する、明確に述べる"],["envoy","n","使節、特使"],["enzyme","n","酵素"],["epicenter","n","震源地、中心"],["epidemic","n","流行病、蔓延"],["epiphany","n","（突然の）悟り、ひらめき"],["epitaph","n","墓碑銘"],["epitomize","v","典型である"],["equilibrium","n","均衡"],["equity","n","公平、株式資本"],["equivalent","adj","同等の"],["equivocal","adj","あいまいな、どちらともとれる"],["equivocate","v","あいまいな言い方をする"],["eradicate","v","根絶する"],["erode","v","浸食する、徐々に損なう"],["erratic","adj","不規則な、気まぐれな"],["erroneous","adj","誤った"],["erudite","adj","博識な"],["erudition","n","博識"],["erupt","v","噴火する、爆発する"],["eschew","v","避ける、慎む"],["esoteric","adj","難解な、秘教的な"],["espionage","n","スパイ活動"],["esteem","n","尊敬"],["ethical","adj","倫理的な"],["eulogize","v","称賛する、追悼する"],["eulogy","n","追悼の辞、賛辞"],["euphoric","adj","幸福感に満ちた"],["evacuate","v","避難させる"],["evade","v","逃れる、回避する"],["evaporate","v","蒸発する"],["evict","v","立ち退かせる"],["evoke","v","呼び起こす"],["evolve","v","進化する"],["exacerbate","v","悪化させる"],["exasperate","v","ひどく怒らせる"],["excavate","v","発掘する"],["excel","v","優れている"],["exclusive","adj","独占的な、排他的な"],["excruciatingly","adv","耐えがたいほどに"],["execute","v","実行する、処刑する"],["exemplary","adj","模範的な"],["exemplify","v","例証する"],["exempt","adj","免除された"],["exert","v","行使する、働かせる"],["exhilaration","n","爽快感、高揚感"],["exhort","v","熱心に勧める"],["exhortation","n","勧告、激励"],["exodus","n","大量出国、集団脱出"],["exonerate","v","（嫌疑を）晴らす"],["exorbitant","adj","法外な"],["exorcise","v","（悪霊を）追い払う"],["exorcism","n","悪魔払い"],["expand","v","拡大する"],["expansively","adv","のびのびと、広範に"],["expedient","adj","好都合な、便宜的な"],["expedite","v","促進する、迅速に処理する"],["expel","v","追放する"],["expenditure","n","支出"],["expertise","n","専門知識"],["expiate","v","（罪を）償う"],["expire","v","期限が切れる"],["explicit","adj","明白な"],["exploit","v","利用する、搾取する"],["exploratory","adj","探索的な"],["exponential","adj","指数関数的な"],["expulsion","n","追放"],["expunge","v","削除する"],["exquisite","adj","絶妙な、洗練された"],["exterminate","v","根絶する、駆除する"],["extermination","n","絶滅、駆除"],["externalize","v","外在化する、外部に表す"],["extinct","adj","絶滅した"],["extinction","n","絶滅"],["extol","v","褒めたたえる"],["extort","v","ゆすり取る"],["extract","v","抽出する"],["extradite","v","（犯人を）引き渡す"],["extrapolate","v","推定する、外挿する"],["extraterrestrial","adj","地球外の"],["extravagant","adj","浪費的な、法外な"],["extricate","v","救い出す、脱出させる"],["extrinsic","adj","外的な"],["exuberant","adj","元気いっぱいの、あふれんばかりの"],["exult","v","大喜びする"],["fabricate","v","でっち上げる、製造する"],["facade","n","（建物の）正面、見せかけ"],["facet","n","側面、面"],["facetious","adj","ふざけた、冗談めかした"],["facilitate","v","容易にする、促進する"],["faction","n","派閥"],["faculty","n","能力、教授陣"],["fad","n","一時的な流行"],["fallacy","n","誤り、誤謬"],["fallible","adj","誤りを犯しやすい"],["famine","n","飢饉"],["famished","adj","ひどく空腹の"],["fanatically","adv","狂信的に"],["farce","n","茶番、笑劇"],["fastidious","adj","気難しい、細かいことにうるさい"],["fatality","n","死者、致命的なこと"],["fatally","adv","致命的に"],["faze","v","当惑させる"],["feasible","adj","実行可能な"],["feat","n","偉業"],["feign","v","ふりをする"],["felicitous","adj","適切な、うまい"],["felicity","n","幸福、適切さ"],["felony","n","重罪"],["ferocious","adj","獰猛な、猛烈な"],["fertility","n","肥沃さ、出生力"],["fervent","adj","熱烈な"],["fervor","n","熱情"],["fetter","v","束縛する"],["feud","n","長年の確執"],["fiasco","n","大失敗"],["fidelity","n","忠実さ、貞節"],["fiendish","adj","悪魔のような、極悪な"],["filthy","adj","汚い、不潔な"],["fiscal","adj","財政の"],["flabbergasted","adj","仰天した"],["flagrant","adj","あからさまな、悪質な"],["flamboyantly","adv","派手に、けばけばしく"],["flattery","n","お世辞"],["flaunt","v","見せびらかす"],["flawed","adj","欠陥のある"],["flawless","adj","完璧な"],["flimsy","adj","薄っぺらな、もろい"],["flourish","v","繁栄する"],["fluctuate","v","変動する"],["foil","v","阻止する"],["foist","v","（無理やり）押しつける"],["foliage","n","（集合的に）葉"],["foment","v","扇動する、助長する"],["footage","n","映像、フィルム"],["foray","n","（突然の）侵略、進出"],["forebode","v","予感する、前兆となる"],["forensic","adj","法医学の、科学捜査の"],["forfeit","v","没収される、失う"],["forgery","n","偽造"],["forgo","v","差し控える、諦める"],["formidable","adj","恐るべき、手ごわい"],["fortification","n","要塞、防備"],["fortify","v","強化する"],["fortitude","n","不屈の精神"],["fortress","n","要塞"],["fortuitously","adv","偶然に"],["founder","v","失敗する、沈没する"],["fragility","n","もろさ"],["frail","adj","虚弱な、もろい"],["frantic","adj","半狂乱の"],["fraternity","n","友愛、同業者団体"],["fraud","n","詐欺"],["fraudulent","adj","詐欺的な"],["fraught","adj","（問題などを）はらんだ"],["frazzle","v","疲れ果てさせる"],["freight","n","貨物"],["frenetic","adj","熱狂的な、慌ただしい"],["frigid","adj","極寒の、冷淡な"],["frisk","v","（身体検査で）調べる"],["frivolous","adj","軽薄な"],["frugal","adj","質素な、倹約の"],["fuel","v","燃料を供給する、あおる"],["fugitive","n","逃亡者"],["full-fledged","adj","一人前の、本格的な"],["fumble","v","不器用に扱う、手探りする"],["furlough","n","一時帰休、休暇"],["furtive","adj","こそこそした"],["futile","adj","無駄な"],["gadget","n","小型機器"],["gait","n","歩き方"],["gallant","adj","勇敢な、礼儀正しい"],["galvanize","v","奮起させる"],["garble","v","（話を）混乱させる"],["garner","v","集める、獲得する"],["garnish","v","飾りをつける"],["gaudy","adj","けばけばしい"],["gaunt","adj","やせこけた"],["genetically","adv","遺伝的に"],["genial","adj","愛想のよい"],["gimmick","n","仕掛け、宣伝のための策"],["gist","n","要点"],["glean","v","拾い集める"],["glib","adj","口先だけの、口達者な"],["glitch","n","不具合"],["gloat","v","ほくそ笑む"],["gluttonous","adj","大食いの"],["gnaw","v","かじる、苦しめる"],["gorge","v","たらふく食べる"],["gradient","n","勾配"],["graft","n","移植片、不正利得"],["grapple","v","取り組む、格闘する"],["gratified","adj","満足した"],["gratuity","n","心付け、チップ"],["gravity","n","重力、重大さ"],["gregarious","adj","社交的な"],["grievance","n","不満、苦情"],["grind","v","すりつぶす、挽く"],["grudge","n","恨み"],["grudgingly","adv","しぶしぶ"],["grueling","adj","過酷な"],["grumble","v","ぶつぶつ言う"],["guarantee","v","保証する"],["guise","n","見せかけ、外見"],["gullible","adj","だまされやすい"],["guzzle","v","がぶ飲みする"],["habitat","n","生息地"],["habitual","adj","習慣的な"],["haggard","adj","やつれた"],["haggle","v","値切る"],["hallmark","n","特徴、品質の証"],["halt","v","止める、止まる"],["hamper","v","妨げる"],["haphazardly","adv","行き当たりばったりに"],["harbinger","n","前触れ、先駆け"],["harness","v","利用する、馬具をつける"],["harrowing","adj","痛ましい、苦難に満ちた"],["harry","v","悩ます、略奪する"],["hassle","n","面倒、厄介"],["hatch","v","孵化する、たくらむ"],["haughty","adj","横柄な、高慢な"],["haven","n","避難所"],["havoc","n","大混乱"],["hazard","n","危険"],["heave","v","持ち上げる、投げる"],["hectic","adj","慌ただしい"],["hedge","v","予防線を張る、回避する"],["heed","v","注意を払う"],["heedless","adj","不注意な"],["hefty","adj","重い、相当な"],["heinous","adj","極悪な"],["hemisphere","n","半球"],["hereditary","adj","遺伝性の、世襲の"],["heretic","n","異端者"],["heritage","n","遺産"],["hermit","n","隠遁者"],["hibernate","v","冬眠する"],["hilarious","adj","大笑いさせる"],["hinder","v","妨げる"],["hindrance","n","障害、妨害"],["hindsight","n","後知恵"],["hoard","v","ためこむ"],["hoax","n","でっち上げ、いたずら"],["hobble","v","足を引きずって歩く"],["holistic","adj","全体的な"],["homage","n","敬意"],["homogeneous","adj","均質の"],["hostile","adj","敵意のある"],["hover","v","空中に浮かぶ、うろつく"],["hub","n","中心、拠点"],["huddle","v","身を寄せ合う"],["humiliate","v","屈辱を与える"],["hunch","n","予感、直感"],["hurtle","v","猛スピードで進む"],["hybrid","n","雑種、混成物"],["hygiene","n","衛生"],["hygienic","adj","衛生的な"],["hype","n","誇大広告"],["hypnosis","n","催眠"],["hypnotize","v","催眠術をかける"],["hypothesis","n","仮説"],["hypothesize","v","仮説を立てる"],["hypothetical","adj","仮説の、仮定の"],["icon","n","象徴、アイコン"],["identical","adj","同一の"],["idiosyncrasy","n","（個人の）風変わりな癖"],["idiosyncratic","adj","独特の"],["idyllic","adj","牧歌的な、のどかな"],["ignite","v","点火する"],["ignominious","adj","不名誉な、屈辱的な"],["illiberal","adj","偏狭な、非自由主義的な"],["illicit","adj","違法の、不正な"],["illustrious","adj","著名な"],["immaculate","adj","しみひとつない、完璧な"],["imminent","adj","差し迫った"],["immunity","n","免疫、免除"],["impair","v","損なう"],["impalpable","adj","触知できない、とらえにくい"],["impartiality","n","公平さ"],["impasse","n","行き詰まり"],["impeachment","n","弾劾"],["impeccable","adj","非の打ちどころのない"],["impede","v","妨げる"],["impediment","n","障害"],["impending","adj","差し迫った"],["imperative","adj","必須の、命令的な"],["imperious","adj","横柄な、尊大な"],["impermeable","adj","不浸透性の"],["impersonal","adj","非個人的な、冷淡な"],["impervious","adj","（影響を）受けつけない"],["impetus","n","推進力"],["implacable","adj","なだめられない、容赦ない"],["implant","v","植え込む、植えつける"],["implement","v","実行する"],["implicate","v","（関与を）示す、巻き込む"],["implicit","adj","暗黙の"],["implore","v","懇願する"],["imposing","adj","堂々とした、印象的な"],["imposition","n","（義務などの）押しつけ、負担"],["impound","v","押収する"],["impoverish","v","貧しくする"],["impregnable","adj","難攻不落の"],["improvise","v","即興で行う"],["imprudent","adj","軽率な"],["impudent","adj","厚かましい"],["impulse","n","衝動"],["impulsive","adj","衝動的な"],["impunity","n","罰を受けないこと"],["impurity","n","不純物"],["inadvertently","adv","うっかり"],["inane","adj","ばかげた"],["inanimate","adj","生命のない"],["inaugurate","v","就任させる、開始する"],["inauguration","n","就任式、開始"],["incapacitate","v","無力にする"],["incarnation","n","化身、具現"],["incense","v","激怒させる"],["incentive","n","動機づけ、報奨"],["inception","n","発端"],["incessant","adj","絶え間ない"],["incidence","n","発生率"],["incinerate","v","焼却する"],["incipient","adj","初期の"],["incisive","adj","鋭い、的確な"],["incite","v","扇動する"],["inclement","adj","（天候が）荒れた"],["inclusive","adj","包括的な"],["incoherent","adj","支離滅裂な"],["incongruous","adj","不調和な、ちぐはぐな"],["inconsequential","adj","取るに足らない"],["incredulous","adj","疑い深い、信じられないという様子の"],["incremental","adj","漸増的な"],["incriminate","v","罪に陥れる、有罪を示す"],["incubator","n","孵卵器、保育器"],["inculcate","v","教え込む"],["incumbent","adj","現職の、義務としてある"],["incur","v","（損失などを）被る"],["indebted","adj","恩義がある、借金のある"],["indelible","adj","消えない"],["indemnity","n","賠償、補償"],["indicative","adj","示している"],["indictment","n","起訴、告発"],["indigenous","adj","土着の"],["indignant","adj","憤慨した"],["indiscretion","n","軽率な行為"],["indiscriminate","adj","無差別の"],["indispensable","adj","不可欠な"],["indoctrinate","v","洗脳する、教化する"],["indolence","n","怠惰"],["induce","v","引き起こす、誘発する"],["inducement","n","誘因、動機"],["inept","adj","下手な、無能な"],["inert","adj","不活性の、動かない"],["inertia","n","惰性、慣性"],["inevitable","adj","避けられない"],["infancy","n","幼少期、初期"],["infatuated","adj","夢中になった、のぼせた"],["infectious","adj","伝染性の"],["infer","v","推論する"],["infested","adj","（害虫などが）はびこった"],["infighting","n","内輪もめ"],["infiltrate","v","潜入する、浸透する"],["infirmity","n","虚弱、病弱"],["inflamed","adj","炎症を起こした、興奮した"],["inflammation","n","炎症"],["influx","n","流入"],["infraction","n","違反"],["infringement","n","侵害"],["infusion","n","注入、浸出"],["ingenious","adj","独創的な、巧妙な"],["ingenuity","n","創意工夫の才"],["ingratiate","v","取り入る"],["inhabitant","n","住民"],["inherent","adj","固有の"],["inhibit","v","抑制する、妨げる"],["inhibition","n","抑制、ためらい"],["inhospitable","adj","居心地の悪い、荒れ果てた"],["initially","adv","最初は"],["inject","v","注射する、注入する"],["inmate","n","（刑務所などの）収容者"],["innate","adj","生まれつきの"],["innocuous","adj","無害な"],["innuendo","n","あてこすり"],["inoculate","v","予防接種をする"],["inquisitive","adj","詮索好きな、知りたがる"],["insatiable","adj","飽くことを知らない"],["inscription","n","碑文、銘"],["inscrutable","adj","不可解な、謎めいた"],["insidious","adj","陰険な、潜行性の"],["insignia","n","記章、勲章"],["insinuation","n","ほのめかし"],["insipid","adj","味気ない、退屈な"],["insolent","adj","横柄な、無礼な"],["insolvent","adj","支払い不能の"],["instigate","v","扇動する、開始させる"],["instill","v","（徐々に）植えつける"],["insubstantial","adj","実体のない、根拠の薄い"],["insular","adj","島国の、狭量な"],["insulate","v","断熱する、隔離する"],["insurgent","n","反乱者"],["insurmountable","adj","克服できない"],["insurrection","n","反乱"],["intact","adj","無傷の"],["intake","n","摂取（量）"],["intangible","adj","無形の、とらえどころのない"],["integral","adj","不可欠な、構成要素の"],["integrate","v","統合する"],["integration","n","統合"],["integrity","n","誠実さ、完全性"],["intercept","v","横取りする、阻止する"],["interject","v","口をはさむ"],["interminable","adj","果てしない"],["intermittently","adv","断続的に"],["interrogate","v","尋問する"],["intervene","v","介入する"],["intervention","n","介入"],["intimate","adj","親密な"],["intimidated","adj","おびえた、威圧された"],["intolerant","adj","不寛容な"],["intoxication","n","酩酊、中毒"],["intractable","adj","手に負えない"],["intrepid","adj","大胆不敵な"],["intricate","adj","複雑な、入り組んだ"],["intrigue","v","興味をそそる、陰謀をたくらむ"],["intriguing","adj","興味をそそる"],["intrinsic","adj","本質的な"],["introvert","n","内向的な人"],["intrusive","adj","押しつけがましい、侵入的な"],["intuitive","adj","直感的な"],["inundate","v","殺到する、水浸しにする"],["invalid","adj","無効な"],["invaluable","adj","計り知れないほど貴重な"],["invariably","adv","常に、例外なく"],["invert","v","逆さにする"],["inveterate","adj","常習的な、根深い"],["invigorate","v","元気づける"],["invincible","adj","無敵の"],["invoke","v","（法律などを）発動する、祈る"],["irascible","adj","怒りっぽい"],["irate","adj","激怒した"],["iridescent","adj","虹色に輝く"],["irk","v","いらだたせる"],["irrational","adj","非合理な"],["irrelevant","adj","無関係な"],["irreparably","adv","修復不可能なほどに"],["irresolute","adj","優柔不断な"],["irrevocable","adj","取り消せない"],["irrigation","n","灌漑"],["jaded","adj","飽きあきした、疲れ切った"],["jeer","v","やじる、あざける"],["jeopardize","v","危険にさらす"],["jeopardy","n","危険"],["jest","n","冗談"],["jiggle","v","軽く揺らす"],["jilt","v","（恋人を）捨てる"],["jinx","n","不運をもたらすもの"],["jostle","v","押しのける、ぶつかり合う"],["jubilant","adj","歓喜に沸く"],["jubilee","n","記念祭"],["judicious","adj","賢明な"],["juggle","v","両立させる、お手玉する"],["jumbled","adj","ごちゃ混ぜの"],["juncture","n","時点、接合点"],["jurisdiction","n","司法権、管轄"],["juror","n","陪審員"],["justify","v","正当化する"],["juvenile","adj","未成年の、子供っぽい"],["keepsake","n","形見、記念品"],["kindred","adj","同種の、親族の"],["knack","n","コツ、才能"],["lackluster","adj","精彩を欠いた"],["lambaste","v","厳しく非難する"],["lament","v","嘆く"],["languid","adj","けだるい、ものうい"],["languishing","adj","衰えつつある"],["lanky","adj","ひょろ長い"],["lapse","n","失敗、経過"],["larceny","n","窃盗"],["latent","adj","潜在的な"],["latitude","n","自由裁量、緯度"],["laudable","adj","称賛に値する"],["laureate","n","受賞者、桂冠詩人"],["lavish","adj","豪華な、惜しみない"],["lax","adj","ゆるい、いい加減な"],["ledger","n","元帳、帳簿"],["leeway","n","余裕、自由度"],["leftover","n","残り物"],["legislate","v","法律を制定する"],["legislature","n","立法府"],["legitimacy","n","正当性"],["legitimate","adj","正当な、合法的な"],["lenient","adj","寛大な"],["lethal","adj","致命的な"],["lethargic","adj","無気力な"],["leverage","n","影響力、てこ"],["levitate","v","空中に浮かぶ"],["levity","n","軽薄さ、ふざけ"],["liability","n","責任、負債"],["liaison","n","連絡、橋渡し役"],["libel","n","名誉毀損"],["liken","v","なぞらえる"],["limb","n","手足、大枝"],["lineage","n","血統、家系"],["linger","v","居残る、ぐずぐずする"],["linkage","n","結びつき"],["liquidate","v","清算する、一掃する"],["litigate","v","訴訟を起こす"],["litigation","n","訴訟"],["lobby","v","陳情する、ロビー活動をする"],["logistically","adv","物流の面で、実務面で"],["longevity","n","長寿"],["loom","v","ぼんやり現れる、迫る"],["loophole","n","抜け穴"],["loot","v","略奪する"],["loquacious","adj","おしゃべりな"],["lousy","adj","ひどい、最低の"],["lucrative","adj","もうかる"],["luminary","n","著名人、第一人者"],["lunar","adj","月の"],["lurch","v","よろめく、ぐらつく"],["lure","v","おびき寄せる"],["lurid","adj","ぞっとする、どぎつい"],["lurk","v","潜む"],["magnetism","n","磁気、魅力"],["malady","n","病気、弊害"],["malevolent","adj","悪意のある"],["malice","n","悪意"],["malign","v","中傷する"],["malignant","adj","悪性の、悪意のある"],["malleability","n","柔軟性、延性"],["malleable","adj","可塑性のある、柔軟な"],["mandatory","adj","義務的な"],["maneuver","n","作戦行動、策略"],["mangle","v","めちゃくちゃにする"],["manifest","v","明らかにする"],["manipulate","v","操作する、巧みに操る"],["mar","v","損なう"],["marginally","adv","わずかに"],["massacre","n","大虐殺"],["materialize","v","実現する、具体化する"],["matriculate","v","大学に入学する"],["matrimony","n","結婚"],["maxim","n","格言"],["mayhem","n","大混乱"],["meager","adj","乏しい"],["meander","v","曲がりくねって進む、ぶらぶら歩く"],["meddle","v","干渉する"],["mediate","v","仲裁する"],["mediator","n","仲裁者"],["medieval","adj","中世の"],["mediocre","adj","平凡な、二流の"],["meditate","v","瞑想する、熟考する"],["meekly","adv","おとなしく"],["memento","n","記念品、思い出の品"],["menace","n","脅威"],["menacingly","adv","威嚇するように"],["menial","adj","単純で低賃金の、卑しい"],["mentor","n","指導者、良き助言者"],["merge","v","合併する、融合する"],["mesmerize","v","魅了する"],["metabolize","v","代謝する"],["metaphor","n","比喩"],["meticulous","adj","細心の"],["microbe","n","微生物"],["microscopically","adv","顕微鏡的に"],["migraine","n","偏頭痛"],["migrate","v","移住する、移動する"],["migration","n","移住、移動"],["migratory","adj","移住性の、渡りをする"],["milestone","n","画期的な出来事、節目"],["mimicry","n","物まね、擬態"],["mirage","n","蜃気楼、幻"],["miscellaneous","adj","雑多な"],["misgiving","n","疑念、不安"],["mishap","n","ちょっとした事故"],["misnomer","n","誤った名称"],["mock","v","あざける、まねする"],["modicum","n","少量"],["modulate","v","調節する"],["molecule","n","分子"],["mollify","v","なだめる"],["molt","v","（鳥・動物が）脱皮する、換羽する"],["momentous","adj","重大な"],["momentum","n","勢い、運動量"],["monarch","n","君主"],["monopolize","v","独占する"],["monopoly","n","独占"],["monotonously","adv","単調に"],["moot","adj","議論の余地のある、実際的意味のない"],["morale","n","士気"],["morbid","adj","病的な、不気味な"],["morose","adj","不機嫌な"],["morsel","n","一口、少量"],["mortality","n","死亡率、必ず死ぬ運命"],["mortgage","n","住宅ローン、抵当"],["mortify","v","ひどく恥ずかしがらせる"],["mount","v","登る、増大する"],["muffled","adj","くぐもった"],["multitude","n","多数"],["mundane","adj","平凡な、世俗的な"],["municipality","n","自治体"],["munificent","adj","気前のよい"],["murky","adj","濁った、暗い"],["muster","v","奮い起こす、召集する"],["mutate","v","突然変異する"],["mutation","n","突然変異"],["mutinous","adj","反乱を起こした、反抗的な"],["mutter","v","ぶつぶつ言う"],["myriad","adj","無数の"],["naive","adj","世間知らずの、純真な"],["namely","adv","すなわち"],["narrowly","adv","かろうじて"],["naturalization","n","帰化"],["negate","v","無効にする、否定する"],["negligent","adj","怠慢な"],["neural","adj","神経の"],["neurologist","n","神経科医"],["neutrality","n","中立"],["niche","n","隙間市場、適所"],["niggle","v","小さなことで悩ませる"],["nimble","adj","機敏な"],["nominally","adv","名目上は"],["nonchalant","adj","無頓着な、平然とした"],["notable","adj","注目すべき"],["notoriously","adv","悪名高く"],["novelty","n","目新しさ"],["novice","n","初心者"],["nucleus","n","核、中核"],["nudge","v","そっと押す"],["nullify","v","無効にする"],["obfuscate","v","わかりにくくする"],["obligatory","adj","義務的な"],["oblique","adj","斜めの、遠回しの"],["obliterate","v","消し去る"],["oblivion","n","忘却、無意識"],["oblivious","adj","気づいていない"],["obnoxious","adj","不愉快な"],["obscure","adj","無名の、あいまいな"],["obscurity","n","無名、不明瞭"],["obsequious","adj","こびへつらう"],["obsessive","adj","強迫観念的な"],["obsolete","adj","廃れた"],["obstinate","adj","頑固な"],["obstruct","v","妨害する"],["obtrusive","adj","でしゃばった、目立つ"],["obtuse","adj","鈍感な、頭の鈍い"],["occidental","adj","西洋の"],["odious","adj","ひどく不快な"],["offshoot","n","支流、分派"],["omen","n","前兆"],["ominous","adj","不吉な"],["omniscient","adj","全知の"],["onerous","adj","煩わしい、骨の折れる"],["ongoing","adj","進行中の"],["onrush","n","殺到、突進"],["onset","n","始まり、発症"],["onslaught","n","猛攻撃"],["onus","n","重荷、責任"],["opaque","adj","不透明な、不明瞭な"],["opposable","adj","（親指などが）他の指と向かい合わせにできる"],["oppress","v","圧迫する、虐げる"],["optimum","adj","最適の"],["opulent","adj","豪華な、富裕な"],["orchestrate","v","画策する、編成する"],["ordeal","n","試練"],["ordinance","n","条例"],["ornithological","adj","鳥類学の"],["orthodontist","n","歯科矯正医"],["ostensible","adj","表向きの"],["ostracize","v","のけ者にする"],["oust","v","追放する"],["outage","n","停電、供給停止"],["outcast","n","のけ者"],["outcry","n","抗議の声"],["outrage","n","激怒、暴力行為"],["outright","adj","完全な、あからさまな"],["overdue","adj","期限の過ぎた"],["overly","adv","過度に"],["override","v","覆す、優先する"],["overrun","v","はびこる、侵略する"],["oversight","n","見落とし、監督"],["overture","n","（交渉の）申し入れ、序曲"],["pageant","n","華やかな行列、コンテスト"],["palatable","adj","口に合う、受け入れられる"],["palate","n","味覚、口蓋"],["pallid","adj","青白い、精彩のない"],["paltry","adj","わずかな、取るに足らない"],["pamper","v","甘やかす"],["panacea","n","万能薬"],["pandemic","n","世界的流行病"],["pandemonium","n","大混乱"],["paragon","n","模範、手本"],["paralysis","n","麻痺"],["parameter","n","変数、基準"],["paramount","adj","最高の、最重要の"],["parasite","n","寄生虫、寄生者"],["pare","v","皮をむく、削減する"],["parry","v","受け流す、かわす"],["pasture","n","牧草地"],["patent","n","特許"],["paternity","n","父親であること"],["pathetic","adj","哀れな、お粗末な"],["patriot","n","愛国者"],["patronage","n","後援、ひいき"],["paucity","n","少量、不足"],["pawn","n","（チェスの）ポーン、手先"],["pedantic","adj","学者ぶった、細かいことにこだわる"],["pedestrian","n","歩行者"],["peer","n","同等の人、同僚"],["penchant","n","強い好み、傾向"],["pendulum","n","振り子"],["penetrate","v","貫通する、浸透する"],["penitent","adj","悔い改めた"],["perceptible","adj","知覚できる"],["perception","n","認識、知覚"],["percolate","v","しみ出る、浸透する"],["perennial","adj","長年続く、多年生の"],["perfunctory","adj","おざなりな、形だけの"],["perilous","adj","非常に危険な"],["perimeter","n","周囲、境界線"],["periphery","n","周辺"],["perish","v","死ぬ、滅びる"],["perjury","n","偽証"],["perk","n","特典、役得"],["permeate","v","行き渡る、浸透する"],["pernicious","adj","有害な、悪質な"],["perpetrate","v","（悪事を）働く"],["perpetrator","n","加害者"],["persecute","v","迫害する"],["persecution","n","迫害"],["perseverance","n","忍耐力"],["persist","v","粘る、持続する"],["personable","adj","感じのよい"],["perspective","n","視点、見通し"],["pertinent","adj","関連する、適切な"],["perturb","v","不安にさせる、かき乱す"],["peruse","v","熟読する、精読する"],["pervade","v","行き渡る、広がる"],["pervasive","adj","蔓延する、行き渡った"],["pester","v","うるさくせがむ"],["pesticide","n","殺虫剤、農薬"],["petrified","adj","恐怖で身動きできない、石化した"],["petulant","adj","短気な、すねた"],["phase","n","段階、局面"],["phenomenal","adj","驚異的な"],["philanthropy","n","慈善活動"],["pilfer","v","くすねる"],["pinnacle","n","頂点"],["pinpoint","v","正確に示す"],["pique","v","（興味を）そそる、立腹させる"],["pitfall","n","落とし穴、陥りやすい危険"],["pivot","n","中心点、軸"],["placate","v","なだめる"],["placid","adj","穏やかな"],["plagiarism","n","盗作、剽窃"],["plagiarize","v","盗用する"],["plague","n","疫病、災難"],["plaintiff","n","原告"],["platitude","n","陳腐な言葉"],["plausible","adj","もっともらしい"],["plea","n","嘆願、答弁"],["plead","v","嘆願する"],["pledge","n","誓約"],["pliable","adj","柔軟な、従順な"],["plight","n","苦境"],["plot","n","筋書き、陰謀"],["plummet","v","急落する"],["plunder","v","略奪する"],["poach","v","密猟する、引き抜く"],["poignant","adj","心に迫る、痛切な"],["polarization","n","二極化"],["pollination","n","受粉"],["polytheistic","adj","多神教の"],["pompous","adj","もったいぶった"],["ponder","v","熟考する"],["ponderous","adj","重苦しい、退屈な"],["possessed","adj","取りつかれた"],["posterity","n","後世の人々、子孫"],["posthumously","adv","死後に"],["posture","n","姿勢、態度"],["potent","adj","強力な、効き目のある"],["potential","n","可能性、潜在能力"],["pragmatic","adj","実用的な"],["precarious","adj","不安定な、危うい"],["precede","v","先行する"],["precedence","n","優先"],["precedent","n","前例"],["precept","n","教え、戒律"],["precinct","n","区域、管轄区"],["precipitate","v","引き起こす、早める"],["precipitation","n","降水（量）"],["precipitous","adj","急な、性急な"],["preclude","v","妨げる、排除する"],["preclusion","n","排除"],["precursor","n","先駆者、前兆"],["predator","n","捕食者"],["predatory","adj","捕食性の、略奪的な"],["predicament","n","窮地"],["predilection","n","偏愛、好み"],["predominate","v","優位を占める"],["preemptive","adj","先制の"],["preferential","adj","優先的な、優遇の"],["prelude","n","前置き、前兆"],["premises","n","（建物の）敷地、前提"],["premium","n","保険料、割増金"],["premonition","n","予感"],["preoccupation","n","没頭、先入観"],["prerequisite","n","前提条件"],["prerogative","n","特権"],["prescient","adj","先見の明のある"],["prescribe","v","処方する、規定する"],["preservation","n","保存"],["prestige","n","名声"],["presumptuous","adj","出しゃばった、厚かましい"],["pretense","n","見せかけ、ふり"],["pretentious","adj","気取った"],["pretext","n","口実"],["prevail","v","勝つ、普及する"],["prevalence","n","普及、流行"],["prevaricate","v","言い逃れる"],["prevarication","n","言い逃れ"],["primate","n","霊長類"],["pristine","adj","手つかずの、新品同様の"],["privilege","n","特権"],["probationary","adj","試用期間の、保護観察の"],["probe","v","綿密に調べる"],["proceeds","n","収益"],["proclaim","v","宣言する"],["proclivity","n","傾向、性癖"],["procrastinate","v","先延ばしにする"],["procure","v","入手する"],["prod","v","つつく、促す"],["prodigious","adj","巨大な、驚異的な"],["prodigy","n","神童、天才"],["profane","adj","冒涜的な、世俗の"],["profess","v","公言する、自称する"],["profound","adj","深い、深遠な"],["profuse","adj","豊富な、あふれる"],["progeny","n","子孫"],["prognosis","n","予後、予測"],["project","v","予測する、投影する"],["projection","n","予測、投影"],["proliferate","v","急増する"],["prolific","adj","多作の、多産の"],["prolonged","adj","長引く"],["promiscuous","adj","乱れた、無差別の"],["promulgate","v","公布する"],["prone","adj","〜しがちな"],["propagate","v","増殖させる、広める"],["propagation","n","繁殖、普及"],["propensity","n","傾向"],["prophecy","n","予言"],["prophetic","adj","予言的な"],["propitious","adj","幸先のよい"],["proponent","n","支持者"],["proposition","n","提案、命題"],["proprietor","n","所有者、経営者"],["propriety","n","礼儀正しさ、妥当性"],["prosecute","v","起訴する"],["prosecutor","n","検察官"],["prostrate","adj","ひれ伏した、打ちのめされた"],["protagonist","n","主人公、主唱者"],["protrusion","n","突起、突出"],["provident","adj","先見の明のある、倹約の"],["provincial","adj","地方の、田舎くさい"],["provision","n","供給、規定"],["provisional","adj","暫定的な"],["provoke","v","挑発する、引き起こす"],["proximity","n","近いこと、近接"],["prudence","n","慎重さ"],["prune","v","刈り込む、削減する"],["pseudoscience","n","疑似科学"],["psychic","adj","超能力の、精神の"],["psychologically","adv","心理的に"],["pulverize","v","粉砕する"],["pundit","n","評論家、専門家"],["pungent","adj","刺激臭のある、ぴりっとする"],["purge","v","粛清する、一掃する"],["purvey","v","供給する"],["quadruple","v","4倍になる"],["quaint","adj","古風で趣のある"],["qualm","n","不安、ためらい"],["quandary","n","板挟み、困惑"],["quantum","n","量、量子"],["quarantine","n","検疫、隔離"],["quell","v","鎮圧する、抑える"],["quench","v","（渇きを）癒す、消す"],["quirk","n","奇妙な癖、偶然"],["quiver","v","震える"],["quorum","n","定足数"],["quota","n","割り当て、定員"],["ramification","n","（複雑な）結果、波紋"],["rampage","n","暴れ回ること"],["rampant","adj","はびこる、猛威を振るう"],["rancor","n","根深い恨み"],["rankle","v","恨みを残す、いらだたせる"],["ransack","v","荒らし回る、略奪する"],["ransom","n","身代金"],["rapacious","adj","強欲な"],["rapport","n","信頼関係"],["rapprochement","n","和解、国交回復"],["rash","adj","軽率な、無謀な"],["ratify","v","批准する"],["ratio","n","比率"],["rationale","n","根拠、理論的説明"],["ravage","v","荒らす、破壊する"],["reap","v","収穫する、（成果を）得る"],["rebate","n","払い戻し"],["rebel","v","反逆する"],["rebellion","n","反乱"],["rebuff","v","はねつける"],["rebuke","v","叱責する"],["rebut","v","反論する"],["rebuttal","n","反論"],["recant","v","（前言を）撤回する"],["recapitulate","v","要約する"],["recede","v","後退する、遠のく"],["receptive","adj","受け入れやすい、理解のある"],["recipient","n","受取人"],["reciprocate","v","お返しをする"],["recklessly","adv","無謀に"],["reclaim","v","取り戻す、開拓する"],["recluse","n","隠遁者"],["reclusive","adj","隠遁した"],["reconcile","v","和解させる、調和させる"],["reconciliation","n","和解、調停"],["recoup","v","取り戻す、埋め合わせる"],["recourse","n","頼みの綱、依頼"],["rectify","v","是正する"],["recuperate","v","回復する"],["recur","v","再発する"],["recurrent","adj","繰り返し起こる"],["redeem","v","（名誉を）回復する、買い戻す"],["redress","v","是正する、償う"],["redundant","adj","余分な、冗長な"],["referendum","n","国民投票"],["refurbish","v","改装する"],["refute","v","論破する"],["regale","v","楽しませる、もてなす"],["regime","n","政権、体制"],["rehash","v","焼き直す"],["reimburse","v","払い戻す"],["reinforce","v","補強する"],["reinstate","v","復職させる、復活させる"],["reiterate","v","繰り返し言う"],["rejuvenate","v","若返らせる"],["relegate","v","格下げする、追いやる"],["relentless","adj","容赦ない、絶え間ない"],["relinquish","v","放棄する、手放す"],["remedy","n","治療法、改善策"],["reminisce","v","思い出にふける"],["remit","v","送金する、免除する"],["remuneration","n","報酬"],["rendition","n","演奏、解釈、翻訳"],["renege","v","約束を破る"],["renounce","v","放棄する、断つ"],["renunciation","n","放棄、断念"],["reparation","n","賠償、償い"],["repatriate","v","本国に送還する"],["repeal","v","廃止する"],["repel","v","撃退する、はねつける"],["repercussion","n","（悪い）反響、余波"],["replenish","v","補充する"],["replete","adj","満ち足りた、たっぷりある"],["replicate","v","複製する、再現する"],["repose","n","休息、安らぎ"],["repository","n","貯蔵庫、宝庫"],["reprehensible","adj","非難に値する"],["reprieve","n","（刑の）執行猶予、一時的な救済"],["reprimand","v","叱責する"],["reprisal","n","報復"],["repudiate","v","拒絶する、否認する"],["repulse","v","撃退する"],["requisite","adj","必須の"],["rescind","v","撤回する、廃止する"],["resent","v","憤る"],["reside","v","居住する"],["resonance","n","共鳴、反響"],["resonant","adj","響き渡る、共鳴する"],["respiratory","adj","呼吸の"],["respite","n","一時的な中断、猶予"],["resplendent","adj","きらびやかな"],["restoration","n","復元、回復"],["restraint","n","抑制、自制"],["resume","v","再開する"],["resurgence","n","復活、再燃"],["resurrection","n","復活、復興"],["resuscitate","v","蘇生させる"],["retain","v","保持する"],["retaliation","n","報復"],["retard","v","遅らせる"],["retentive","adj","記憶力のよい、保持する"],["reticent","adj","口数の少ない、控えめな"],["retort","v","言い返す"],["retribution","n","報い、天罰"],["retrieve","v","取り戻す、回収する"],["retroactively","adv","さかのぼって"],["revamp","v","刷新する"],["revel","v","大いに楽しむ"],["reverberate","v","反響する"],["reversal","n","逆転"],["revert","v","元に戻る"],["revile","v","ののしる"],["revise","v","改訂する"],["revitalize","v","活性化する"],["revoke","v","取り消す"],["rhetorically","adv","修辞的に、大げさに"],["rife","adj","蔓延した"],["rigorous","adj","厳格な、厳密な"],["robust","adj","頑丈な、力強い"],["roundabout","adj","遠回しの"],["rout","n","大敗、潰走"],["rowdy","adj","乱暴な、騒々しい"],["rubble","n","瓦礫"],["rudimentary","adj","初歩的な"],["rumble","v","ゴロゴロ鳴る"],["rundown","n","概要、要約"],["rustic","adj","素朴な、田舎風の"],["ruthless","adj","冷酷な"],["sabotage","n","妨害工作"],["salient","adj","顕著な、目立つ"],["sanctity","n","神聖さ"],["sanctuary","n","聖域、保護区"],["sanitation","n","衛生設備"],["satirize","v","風刺する"],["saturate","v","飽和させる、浸す"],["savor","v","味わう"],["savvy","adj","実際的な知識のある"],["scapegoat","n","身代わり"],["scarce","adj","乏しい、不足した"],["scatter","v","まき散らす、散らばる"],["scavenge","v","あさる"],["schematic","adj","図式的な"],["scheme","n","計画、陰謀"],["schism","n","分裂、分派"],["scour","v","くまなく探す、ごしごし磨く"],["scrabble","v","引っかく、手探りする"],["scrawl","v","殴り書きする"],["scruple","n","ためらい、良心のとがめ"],["scrupulous","adj","細心の、良心的な"],["scrutinize","v","精査する"],["scuttle","v","急いで走る、（計画を）つぶす"],["seamless","adj","継ぎ目のない、円滑な"],["secede","v","脱退する"],["seclude","v","隔離する"],["sectarian","adj","宗派の、党派的な"],["sedentary","adj","座りがちの、定住の"],["seditious","adj","扇動的な"],["segregation","n","分離、隔離"],["seismology","n","地震学"],["semblance","n","外観、見せかけ"],["senile","adj","老衰した"],["serene","adj","穏やかな、澄んだ"],["servitude","n","隷属"],["setback","n","挫折、後退"],["shackle","v","束縛する、手かせをかける"],["shatter","v","粉々にする"],["sheer","adj","まったくの、切り立った"],["showdown","n","決着、対決"],["shrewd","adj","抜け目のない"],["shroud","v","覆い隠す"],["shun","v","避ける"],["simulate","v","模擬する、装う"],["simulation","n","シミュレーション"],["simultaneous","adj","同時の"],["sinister","adj","不吉な、邪悪な"],["skeptical","adj","懐疑的な"],["skyrocket","v","急上昇する"],["slam","v","バタンと閉める、酷評する"],["slash","v","大幅に削減する、切りつける"],["sleek","adj","なめらかな、洗練された"],["sluggish","adj","不活発な、のろい"],["slump","n","不振、スランプ"],["smear","v","塗りつける、中傷する"],["smother","v","窒息させる、覆い隠す"],["smuggle","v","密輸する"],["snare","n","罠"],["snarl","v","うなる、からまる"],["snatch","v","ひったくる"],["sneer","v","あざ笑う"],["snide","adj","嫌みな"],["snip","v","チョキンと切る"],["snitch","v","告げ口する"],["snub","v","冷たくあしらう"],["soar","v","急上昇する"],["sobriety","n","しらふ、真面目さ"],["sojourn","n","短期滞在"],["solace","n","慰め"],["solicit","v","求める、勧誘する"],["solidarity","n","団結"],["somber","adj","陰気な、暗い"],["sophisticated","adj","洗練された、高度な"],["sovereignty","n","主権"],["sparse","adj","まばらな"],["spasm","n","けいれん"],["spawn","v","産卵する、引き起こす"],["specify","v","明示する"],["specimen","n","標本、見本"],["specter","n","幽霊、不安の種"],["speculation","n","憶測、投機"],["spell","n","短い期間、呪文"],["spillage","n","こぼれ、流出"],["splinter","n","破片、とげ"],["splurge","v","散財する"],["spontaneous","adj","自発的な"],["sporadic","adj","散発的な"],["spouse","n","配偶者"],["sprawl","v","大の字に寝そべる、無秩序に広がる"],["spree","n","浮かれ騒ぎ、〜し放題"],["sprout","v","芽を出す"],["spur","v","拍車をかける"],["spurious","adj","偽の、いんちきの"],["spurn","v","はねつける"],["squabble","n","つまらない口論"],["squander","v","浪費する"],["squeamish","adj","神経質な、吐き気を催しやすい"],["squint","v","目を細める"],["stabilize","v","安定させる"],["stagger","v","よろめく、仰天させる"],["stagnant","adj","よどんだ、停滞した"],["stake","n","賭け金、利害関係"],["stale","adj","新鮮でない、陳腐な"],["stalemate","n","行き詰まり"],["stalwart","adj","頼りになる、忠実な"],["stammer","v","口ごもる"],["state-of-the-art","adj","最先端の"],["static","adj","静的な、変化のない"],["stationary","adj","静止した"],["statistically","adv","統計的に"],["status quo","n","現状"],["statutory","adj","法定の"],["staunch","adj","忠実な、確固たる"],["stealth","n","こっそり行動すること"],["steer","v","操縦する、導く"],["stem","v","食い止める、〜に由来する"],["sterile","adj","不妊の、無菌の"],["stern","adj","厳格な、厳しい"],["stifle","v","息苦しくする、抑え込む"],["stigma","n","汚名、不名誉の印"],["stimulate","v","刺激する"],["stipend","n","手当、奨学金"],["stipulate","v","規定する、明記する"],["stolid","adj","無感動な、鈍重な"],["stowage","n","積み込み、収納"],["straddle","v","またがる"],["stray","v","道に迷う、それる"],["streak","n","筋、連続"],["strenuous","adj","精力的な、激しい"],["stringent","adj","厳しい、厳格な"],["strive","v","努力する"],["strut","v","気取って歩く"],["stubborn","adj","頑固な"],["stump","v","困らせる"],["stunt","v","発育を妨げる"],["stupendous","adj","途方もない、驚異的な"],["sturdily","adv","頑丈に"],["stymie","v","妨害する"],["suave","adj","あか抜けた、社交的な"],["subdued","adj","抑えられた、おとなしい"],["subjugate","v","征服する"],["sublime","adj","崇高な"],["submerge","v","沈める、潜る"],["submissive","adj","服従的な"],["subordinate","adj","下位の、従属的な"],["subsequent","adj","その後の"],["subsidence","n","沈下、鎮静"],["subsidize","v","補助金を出す"],["subsistence","n","最低限の生活"],["substantiate","v","立証する"],["subtle","adj","微妙な、繊細な"],["subversive","adj","破壊的な、体制転覆の"],["subvert","v","（体制を）転覆させる"],["succinct","adj","簡潔な"],["succulent","adj","汁気の多い"],["succumb","v","屈する"],["suffocate","v","窒息させる"],["suffrage","n","参政権"],["sullen","adj","不機嫌な、むっつりした"],["sumptuous","adj","豪華な"],["superficial","adj","表面的な"],["superfluous","adj","余分な"],["supplant","v","取って代わる"],["supplement","v","補う"],["suppress","v","抑圧する、鎮める"],["surge","n","急増"],["surmise","v","推測する"],["surmount","v","克服する"],["surpass","v","上回る"],["surplus","n","余剰"],["surreptitiously","adv","こっそりと"],["surrogate","n","代理人、代理母"],["surveillance","n","監視"],["susceptible","adj","影響されやすい"],["suspend","v","一時停止する、つるす"],["sustain","v","維持する、支える"],["sustainable","adj","持続可能な"],["swamp","v","圧倒する、水浸しにする"],["swarm","n","群れ"],["sway","v","揺れる、動かす"],["swerve","v","急に曲がる"],["swill","v","がぶ飲みする"],["swindle","v","詐取する"],["synonymous","adj","同義の"],["synthesize","v","合成する"],["taciturn","adj","無口な"],["tackle","v","取り組む"],["tactics","n","戦術"],["tally","n","集計"],["tamper","v","いじくる、不正に変える"],["tangle","n","もつれ"],["tantamount","adj","同等の"],["tantrum","n","かんしゃく"],["tariff","n","関税"],["tarnish","v","曇らせる、傷つける"],["taunt","v","あざける"],["taut","adj","ぴんと張った"],["tedious","adj","退屈な、うんざりする"],["tedium","n","退屈"],["teeming","adj","あふれんばかりの"],["teeter","v","ぐらつく"],["temperament","n","気質"],["tenacious","adj","粘り強い、頑強な"],["tenet","n","主義、信条"],["tentative","adj","仮の、ためらいがちな"],["tenuous","adj","希薄な、薄弱な"],["tenure","n","在職期間、終身在職権"],["tepid","adj","ぬるい、気乗りしない"],["terrestrial","adj","地球の、陸上の"],["terse","adj","簡潔な、そっけない"],["testimonial","n","推薦状、証明書"],["thesis","n","論文、主張"],["thread","n","糸、筋道"],["threshold","n","入口、閾値"],["thrift","n","倹約"],["thrifty","adj","倹約家の"],["thrive","v","繁栄する"],["throb","v","ずきずき痛む"],["throng","n","群衆"],["thrust","v","突き出す、押し込む"],["thwart","v","阻止する"],["tinge","n","かすかな色合い、気味"],["toll","n","死傷者数、通行料"],["topple","v","倒れる、倒す"],["torment","n","苦痛"],["torrid","adj","灼熱の、熱烈な"],["torture","n","拷問"],["tout","v","褒めちぎる、売り込む"],["toxic","adj","有毒な"],["traffic","v","不正取引する"],["trait","n","特性"],["trance","n","恍惚状態、催眠状態"],["tranquil","adj","静かな、穏やかな"],["transaction","n","取引"],["transcend","v","超越する"],["transcendent","adj","超越した、卓越した"],["transfusion","n","輸血"],["transgression","n","違反、罪"],["transient","adj","一時的な、つかの間の"],["translucent","adj","半透明の"],["transmit","v","伝える、送信する"],["transparent","adj","透明な、明白な"],["transpose","v","置き換える、入れ替える"],["traumatic","adj","心的外傷を与えるような"],["traverse","v","横断する"],["travesty","n","ひどいまがい物、茶番"],["treacherous","adj","裏切りの、危険な"],["treason","n","反逆罪"],["tremendous","adj","ものすごい"],["tribally","adv","部族的に"],["tribute","n","賛辞、貢ぎ物"],["trigger","v","引き起こす"],["trite","adj","陳腐な"],["triumph","n","勝利"],["trivial","adj","取るに足らない"],["truancy","n","無断欠席"],["truculent","adj","喧嘩腰の、攻撃的な"],["truncate","v","切り詰める"],["tumor","n","腫瘍"],["turmoil","n","混乱"],["tyranny","n","暴政"],["ubiquitous","adj","至る所にある"],["ulterior","adj","隠れた、裏の"],["ultimately","adv","最終的に"],["ultimatum","n","最後通告"],["unabashedly","adv","恥じることなく"],["unanimously","adv","満場一致で"],["uncouth","adj","無作法な、粗野な"],["uncover","v","暴く"],["undergo","v","経験する、受ける"],["undermine","v","徐々に損なう、弱体化させる"],["underscore","v","強調する"],["undertake","v","引き受ける、着手する"],["unearth","v","掘り出す、発見する"],["unfold","v","展開する、広げる"],["unprecedented","adj","前例のない"],["unravel","v","解きほぐす、解明する"],["unruly","adj","手に負えない"],["unscathed","adj","無傷の"],["unsettle","v","動揺させる"],["untenable","adj","支持できない"],["upend","v","ひっくり返す"],["upheaval","n","激変、動乱"],["uphold","v","支持する、維持する"],["upscale","adj","高級な"],["upshot","n","結末、結果"],["upstage","v","注目を奪う"],["upstart","n","成り上がり者"],["urbane","adj","洗練された、上品な"],["usher","v","案内する"],["usurp","v","奪い取る"],["utility","n","有用性、公共事業"],["vacillate","v","迷う、揺れ動く"],["valiant","adj","勇敢な"],["validate","v","立証する、有効にする"],["validity","n","妥当性"],["vandalism","n","破壊行為"],["vanquish","v","打ち負かす"],["veer","v","急に向きを変える"],["vehement","adj","激しい、熱烈な"],["velocity","n","速度"],["venerable","adj","尊敬すべき"],["venomous","adj","毒のある、悪意に満ちた"],["vent","n","通気孔、はけ口"],["venue","n","会場"],["veracity","n","真実性"],["verbose","adj","冗長な"],["verdict","n","評決"],["verge","n","縁、瀬戸際"],["verification","n","検証"],["verify","v","確かめる"],["vernacular","n","日常語、その土地の言葉"],["versatile","adj","多才な、多用途の"],["vestige","n","名残、痕跡"],["veto","v","拒否する"],["viability","n","実行可能性"],["vibrant","adj","活気のある、鮮やかな"],["vicarious","adj","代理の、間接的に体験する"],["vicinity","n","付近"],["vicious","adj","悪意のある、凶暴な"],["vie","v","競う"],["vigilant","adj","警戒を怠らない"],["vigorous","adj","活発な、力強い"],["vilify","v","中傷する"],["vindicate","v","潔白を証明する"],["virtually","adv","事実上、ほとんど"],["virtuous","adj","徳の高い"],["virulent","adj","猛毒の、悪意に満ちた"],["vociferous","adj","声高な"],["void","adj","空の、無効の"],["volatile","adj","不安定な、揮発性の"],["volition","n","意志"],["voluptuous","adj","官能的な"],["voraciously","adv","貪欲に"],["vulgar","adj","下品な"],["vulnerable","adj","傷つきやすい、脆弱な"],["wage","n","賃金"],["waive","v","放棄する、見送る"],["wanton","adj","理由のない、無分別な"],["warden","n","管理人、看守"],["waver","v","揺らぐ、迷う"],["waylay","v","待ち伏せする"],["weather","v","（困難を）乗り切る"],["whim","n","気まぐれ"],["widespread","adj","広範囲に及ぶ"],["wince","v","顔をしかめる"],["windfall","n","棚ぼた、思わぬ収入"],["withhold","v","差し控える、保留する"],["wrangle","n","口論"],["wreak","v","（被害を）もたらす"],["wreckage","n","残骸"],["wrench","v","ねじる、ねじ取る"],["wriggle","v","身をよじる"],["yardstick","n","基準、尺度"],["zeal","n","熱意"],["zenith","n","頂点"],["zest","n","熱意、風味"]];
+  var KEY = "vocab-trainer-v1", WKEY = "vocab-trainer-words-v1";
+  var POS_LABEL = { n: "名詞", v: "動詞", adj: "形容詞", adv: "副詞", "": "その他" };
+  var POS_FROM_JP = { "名詞": "n", "動詞": "v", "形容詞": "adj", "副詞": "adv" };
+
+  /* ---------- storage (falls back to memory when the browser refuses) ---------- */
+  var mem = {}, storageOk = true;
+  function load(k) {
+    try { var v = window.localStorage.getItem(k); return v ? JSON.parse(v) : null; }
+    catch (e) { storageOk = false; return mem[k] || null; }
+  }
+  function save(k, v) {
+    try { window.localStorage.setItem(k, JSON.stringify(v)); }
+    catch (e) { storageOk = false; mem[k] = v; }
+  }
+  function drop(k) { try { window.localStorage.removeItem(k); } catch (e) { delete mem[k]; } }
+
+  /* ---------- pure logic ---------- */
+  function tokens(m) {
+    return m.replace(/[（(][^）)]*[）)]/g, "").split(/[、,，]/).map(function (s) { return s.trim(); }).filter(Boolean);
+  }
+  function shuffle(a) {
+    a = a.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  function weightedSample(items, weightFn, n) {
+    var pool = items.map(function (it) { return { it: it, w: weightFn(it) }; }), out = [];
+    while (out.length < n && pool.length) {
+      var sum = 0, i;
+      for (i = 0; i < pool.length; i++) sum += pool[i].w;
+      var r = Math.random() * sum;
+      for (i = 0; i < pool.length - 1; i++) { r -= pool[i].w; if (r < 0) break; }
+      out.push(pool[i].it);
+      pool.splice(i, 1);
+    }
+    return out;
+  }
+  function toWords(rows) {
+    return rows.map(function (r) { return { w: r[0], p: r[1], m: r[2], t: tokens(r[2]) }; });
+  }
+  function makeQuestion(word, all) {
+    var mine = {};
+    word.t.forEach(function (t) { mine[t] = 1; });
+    function ok(x) {
+      if (x.w === word.w) return false;
+      for (var i = 0; i < x.t.length; i++) if (mine[x.t[i]]) return false;
+      return true;
+    }
+    var cands = all.filter(function (x) { return x.p === word.p && ok(x); });
+    if (cands.length < 3) cands = all.filter(ok);
+    var picks = shuffle(cands).slice(0, 3);
+    var opts = shuffle([word].concat(picks));
+    return {
+      word: word,
+      choices: opts.map(function (o) { return o.m; }),
+      correct: opts.indexOf(word),
+      picked: null,
+      flag: false
+    };
+  }
+
+  /* ---------- state ---------- */
+  var words = toWords(load(WKEY) || WORDS_DEFAULT);
+  var state = load(KEY) || {};
+  state.box = state.box || {};
+  state.stats = state.stats || {};
+  state.settings = Object.assign({ n: 20, removeOnCorrect: false }, state.settings || {});
+  function persist() { save(KEY, state); }
+  var wordMap = {};
+  function indexWords() { wordMap = {}; words.forEach(function (x) { wordMap[x.w] = x; }); }
+  indexWords();
+
+  function boxWords() {
+    return Object.keys(state.box).filter(function (w) { return wordMap[w]; });
+  }
+  function boxAdd(w, reason) {
+    var b = state.box[w] || { wrong: false, check: false, t: Date.now() };
+    b[reason] = true; b.t = Date.now();
+    state.box[w] = b; persist();
+  }
+  function boxClear(w, reason) {
+    var b = state.box[w];
+    if (!b) return;
+    b[reason] = false;
+    if (!b.wrong && !b.check) delete state.box[w];
+    persist();
+  }
+  function weight(x) {
+    var s = state.stats[x.w];
+    if (!s) return 3;
+    return s.w > s.c ? 2 : 1;
+  }
+  function pickWords(mode, n) {
+    if (mode === "box") {
+      var bw = boxWords().map(function (w) { return wordMap[w]; });
+      return shuffle(bw).slice(0, n);
+    }
+    return weightedSample(words, weight, n);
+  }
+
+  /* ---------- csv ---------- */
+  function csvEscape(s) { s = String(s); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+  function toCsv(rows) { return rows.map(function (r) { return r.map(csvEscape).join(","); }).join("\r\n") + "\r\n"; }
+  function parseCsv(text) {
+    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+    var rows = [], row = [], cur = "", q = false;
+    for (var i = 0; i < text.length; i++) {
+      var c = text[i];
+      if (q) {
+        if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+        else cur += c;
+      } else if (c === '"') q = true;
+      else if (c === ",") { row.push(cur); cur = ""; }
+      else if (c === "\n" || c === "\r") {
+        if (c === "\r" && text[i + 1] === "\n") i++;
+        row.push(cur); cur = "";
+        if (row.length > 1 || row[0] !== "") rows.push(row);
+        row = [];
+      } else cur += c;
+    }
+    if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
+    return rows;
+  }
+  function rowsFromCsv(text) {
+    var rows = parseCsv(text), out = [];
+    rows.forEach(function (r, i) {
+      r = r.map(function (x) { return x.trim(); });
+      if (i === 0 && /^word$/i.test(r[0])) return;
+      if (!r[0]) return;
+      var p = "", m = "";
+      if (r.length >= 3) { p = POS_FROM_JP[r[1]] || r[1].toLowerCase(); m = r[2]; }
+      else { m = r[1] || ""; }
+      if (!/^(n|v|adj|adv)$/.test(p)) p = "";
+      if (m) out.push([r[0], p, m]);
+    });
+    return out;
+  }
+
+  var api = { tokens: tokens, shuffle: shuffle, weightedSample: weightedSample, toWords: toWords, makeQuestion: makeQuestion, parseCsv: parseCsv, rowsFromCsv: rowsFromCsv, toCsv: toCsv, words: words };
+  if (typeof document === "undefined") { (typeof globalThis !== "undefined" ? globalThis : this).__VT = api; return; }
+  window.__VT = api;
+
+  /* ---------- ui ---------- */
+  var app = document.getElementById("app");
+  var quiz = null;     // {mode, qs, i, done}
+  var message = "";
+  var confirmReset = false;
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function posLabel(p) { return POS_LABEL[p] || POS_LABEL[""]; }
+  function pct(a, b) { return b ? Math.round(a / b * 100) : 0; }
+
+  function renderHome() {
+    quiz = null;
+    var seen = Object.keys(state.stats).length, boxN = boxWords().length;
+    var c = 0, w = 0;
+    Object.keys(state.stats).forEach(function (k) { c += state.stats[k].c; w += state.stats[k].w; });
+    var nOpts = [10, 20, 30, 50].map(function (n) {
+      return '<option value="' + n + '"' + (state.settings.n === n ? " selected" : "") + ">" + n + "問</option>";
+    }).join("");
+    app.innerHTML =
+      '<header><h1>単語トレーナー</h1><p class="sub">' + words.length + '語から無作為に出題します。間違えた問題とチェックした問題は「箱」に入ります。</p></header>' +
+      (message ? '<p class="msg" role="status">' + esc(message) + "</p>" : "") +
+      '<section class="card"><div class="stats">' +
+      "<div><b>" + words.length + "</b><span>登録語数</span></div>" +
+      "<div><b>" + seen + "</b><span>解いた単語</span></div>" +
+      "<div><b>" + (c + w ? pct(c, c + w) + "%" : "-") + "</b><span>累計の正答率</span></div>" +
+      "<div><b>" + boxN + "</b><span>箱の中</span></div></div>" +
+      '<label class="field">出題数 <select id="nsel">' + nOpts + "</select></label>" +
+      '<div class="row"><button class="btn primary" data-act="start-all">全単語から出題</button>' +
+      '<button class="btn boxy" data-act="start-box"' + (boxN ? "" : " disabled") + ">箱から出題（" + boxN + "）</button></div>" +
+      '<button class="btn" data-act="open-box">箱の中身を見る</button></section>' +
+      '<section class="card"><details><summary>データの管理（Excel / CSV）</summary><div>' +
+      '<p class="note">単語一覧はCSV（word, pos, meaning）で書き出せます。Excelで編集して保存し直し、下で取り込むと自分用の問題集になります。</p>' +
+      '<div class="row"><button class="btn small" data-act="exp-all">全単語をCSV保存</button><button class="btn small" data-act="copy-all">全単語をコピー</button></div>' +
+      '<label class="field">取り込み方法 <select id="impmode"><option value="merge">追加（同じ単語は上書き）</option><option value="replace">全部置き換える</option></select></label>' +
+      '<input type="file" id="impfile" accept=".csv,.txt,text/csv,text/plain">' +
+      '<div class="row"><button class="btn small" data-act="reset-words">初期データに戻す</button>' +
+      '<button class="btn small" data-act="reset-stats">' + (confirmReset ? "本当に消す（もう一度押す）" : "学習記録と箱を消す") + "</button></div>" +
+      (storageOk ? "" : '<p class="note">この環境では記録を保存できません。ページを閉じると記録は消えます。</p>') +
+      "</div></details></section>";
+    message = "";
+  }
+
+  function startQuiz(mode) {
+    var n = state.settings.n;
+    var ws = pickWords(mode, n);
+    if (!ws.length) { message = "出題できる単語がありません。"; renderHome(); return; }
+    quiz = { mode: mode, qs: ws.map(function (x) { return makeQuestion(x, words); }), i: 0, done: false };
+    renderQuiz();
+  }
+
+  function renderQuiz() {
+    var q = quiz.qs[quiz.i], answered = q.picked !== null, N = quiz.qs.length;
+    var ch = q.choices.map(function (m, i) {
+      var cls = "choice";
+      if (answered) { if (i === q.correct) cls += " good"; else if (i === q.picked) cls += " bad"; }
+      return '<button class="' + cls + '" data-act="pick" data-i="' + i + '"' + (answered ? " disabled" : "") + '><span class="k">' + (i + 1) + '</span><span class="t">' + esc(m) + "</span></button>";
+    }).join("");
+    var fb = "";
+    if (answered) {
+      var ok = q.picked === q.correct;
+      fb = '<div class="feedback"><div class="verdict ' + (ok ? "ok" : "ng") + '">' + (ok ? "正解" : "不正解") +
+        "<span>" + esc(q.word.w) + " = " + esc(q.word.m) + "</span></div>" +
+        '<button class="btn primary" data-act="next">' + (quiz.i === N - 1 ? "結果を見る" : "次へ") + "</button></div>";
+    }
+    app.innerHTML =
+      '<div class="qhead"><button class="link" data-act="quit">中止</button><div class="track"><div class="fill" style="width:' + (quiz.i + (answered ? 1 : 0)) / N * 100 + '%"></div></div><span class="count">' + (quiz.i + 1) + " / " + N + "</span></div>" +
+      '<section class="card"><div class="meta"><span class="chip">' + posLabel(q.word.p) + "</span>" + (quiz.mode === "box" ? '<span class="chip box">箱から</span>' : "") + "</div>" +
+      '<h2 class="word">' + esc(q.word.w) + "</h2>" +
+      '<div class="choices">' + ch + "</div>" +
+      '<button class="flag" role="checkbox" aria-checked="' + q.flag + '" data-act="flag"><span class="cb">✓</span><span>自信がない・あとで復習する（箱に入れる）</span></button>' +
+      fb + "</section>";
+  }
+
+  function pick(i) {
+    var q = quiz.qs[quiz.i];
+    if (q.picked !== null) return;
+    q.picked = i;
+    var w = q.word.w, ok = i === q.correct;
+    var s = state.stats[w] || { c: 0, w: 0 };
+    if (ok) s.c++; else s.w++;
+    state.stats[w] = s;
+    if (!ok) boxAdd(w, "wrong");
+    else if (quiz.mode === "box" && state.settings.removeOnCorrect && !q.flag) { delete state.box[w]; }
+    persist();
+    renderQuiz();
+  }
+  function toggleFlag() {
+    var q = quiz.qs[quiz.i];
+    q.flag = !q.flag;
+    if (q.flag) boxAdd(q.word.w, "check"); else boxClear(q.word.w, "check");
+    renderQuiz();
+  }
+  function next() {
+    if (quiz.i < quiz.qs.length - 1) { quiz.i++; renderQuiz(); }
+    else { quiz.done = true; renderResult(); }
+  }
+
+  function renderResult() {
+    var N = quiz.qs.length, good = quiz.qs.filter(function (q) { return q.picked === q.correct; }).length;
+    var added = quiz.qs.filter(function (q) { return state.box[q.word.w]; }).length;
+    var items = quiz.qs.map(function (q) {
+      var ok = q.picked === q.correct, b = state.box[q.word.w];
+      return '<div class="item"><span class="mark ' + (ok ? "ok" : "ng") + '">' + (ok ? "○" : "×") + '</span><span class="w">' + esc(q.word.w) + "</span>" +
+        '<span class="chips">' + (q.flag ? '<span class="chip box">チェック</span>' : "") + (b && b.wrong ? '<span class="chip bad">間違い</span>' : "") + "</span>" +
+        '<span class="m">' + esc(q.word.m) + "</span></div>";
+    }).join("");
+    app.innerHTML =
+      '<section class="card score"><span class="sub">結果</span><div><b>' + good + " / " + N + "</b></div><p class=\"sub\">箱に入っている問題：" + added + "問</p></section>" +
+      '<div class="row"><button class="btn primary" data-act="again">もう一度（新しい' + N + "問）</button>" +
+      '<button class="btn boxy" data-act="open-box">箱を見る</button><button class="btn" data-act="home">ホーム</button></div>' +
+      '<section class="card"><div class="list">' + items + "</div></section>";
+  }
+
+  function renderBox() {
+    var keys = boxWords().sort(function (a, b) { return state.box[b].t - state.box[a].t; });
+    var rows = keys.map(function (w) {
+      var x = wordMap[w], b = state.box[w];
+      return '<div class="item"><span></span><span class="w">' + esc(w) + "</span>" +
+        '<span class="chips">' + (b.check ? '<span class="chip box">チェック</span>' : "") + (b.wrong ? '<span class="chip bad">間違い</span>' : "") +
+        '<button class="btn small" data-act="out" data-w="' + esc(w) + '">出す</button></span>' +
+        '<span class="m">' + esc(posLabel(x.p)) + "　" + esc(x.m) + "</span></div>";
+    }).join("");
+    app.innerHTML =
+      '<div class="qhead"><button class="link" data-act="home">← ホーム</button></div>' +
+      "<header><h1>箱（" + keys.length + "語）</h1><p class=\"sub\">間違えた単語と、自分でチェックした単語が入ります。</p></header>" +
+      '<div class="row"><button class="btn boxy" data-act="start-box"' + (keys.length ? "" : " disabled") + ">箱から出題</button>" +
+      '<button class="btn small" data-act="exp-box"' + (keys.length ? "" : " disabled") + ">CSV保存</button>" +
+      '<button class="btn small" data-act="copy-box"' + (keys.length ? "" : " disabled") + ">コピー</button></div>" +
+      '<label class="field"><input type="checkbox" id="roc"' + (state.settings.removeOnCorrect ? " checked" : "") + '> 箱からの出題で正解したら、箱から出す</label>' +
+      (message ? '<p class="msg" role="status">' + esc(message) + "</p>" : "") +
+      '<section class="card">' + (rows ? '<div class="list">' + rows + "</div>" : '<p class="empty">箱は空です。間違えた単語や、チェックを付けた単語がここに入ります。</p>') + "</section>";
+    message = "";
+  }
+
+  function download(name, text) {
+    try {
+      var blob = new Blob(["﻿" + text], { type: "text/csv;charset=utf-8" });
+      var url = URL.createObjectURL(blob), a = document.createElement("a");
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+      return true;
+    } catch (e) { return false; }
+  }
+  function copy(text, done) {
+    try {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+    } catch (e) { done(false); }
+  }
+  function allRows() { return [["word", "pos", "meaning"]].concat(words.map(function (x) { return [x.w, x.p, x.m]; })); }
+  function boxRows() {
+    return [["word", "pos", "meaning", "reason"]].concat(boxWords().map(function (w) {
+      var x = wordMap[w], b = state.box[w];
+      return [w, x.p, x.m, (b.wrong ? "間違い" : "") + (b.wrong && b.check ? "+" : "") + (b.check ? "チェック" : "")];
+    }));
+  }
+  function exportOrCopy(kind, rows, file) {
+    var text = toCsv(rows);
+    if (kind === "exp") {
+      message = download(file, text) ? "CSVを保存しました。開けない場合は「コピー」を使ってください。" : "保存できませんでした。「コピー」を使ってください。";
+      rerender();
+    } else {
+      copy(text, function (ok) { message = ok ? "コピーしました。メモなどに貼り付けて使えます。" : "コピーできませんでした。"; rerender(); });
+    }
+  }
+  function rerender() { if (quiz && !quiz.done && quiz.qs) renderQuiz(); else if (screen === "box") renderBox(); else renderHome(); }
+
+  var screen = "home";
+  function go(s) { screen = s; if (s === "box") renderBox(); else renderHome(); window.scrollTo(0, 0); }
+
+  function doImport(file) {
+    var mode = document.getElementById("impmode").value;
+    var fr = new FileReader();
+    fr.onload = function () {
+      var rows = rowsFromCsv(String(fr.result || ""));
+      if (rows.length < 4) { message = "取り込めませんでした。word, pos, meaning の列があるCSVを選んでください。"; renderHome(); return; }
+      var base = mode === "merge" ? words.map(function (x) { return [x.w, x.p, x.m]; }) : [];
+      var idx = {};
+      base.forEach(function (r, i) { idx[r[0]] = i; });
+      rows.forEach(function (r) { if (idx[r[0]] !== undefined) base[idx[r[0]]] = r; else { idx[r[0]] = base.length; base.push(r); } });
+      save(WKEY, base);
+      words = toWords(base); indexWords();
+      message = rows.length + "語を取り込みました（現在 " + words.length + "語）。";
+      renderHome();
+    };
+    fr.readAsText(file, "utf-8");
+  }
+
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-act]");
+    if (!t || t.disabled) return;
+    var a = t.getAttribute("data-act");
+    if (a !== "reset-stats") confirmReset = false;
+    if (a === "start-all") startQuiz("all");
+    else if (a === "start-box") startQuiz("box");
+    else if (a === "open-box") { quiz = null; go("box"); }
+    else if (a === "home") { quiz = null; go("home"); }
+    else if (a === "again") startQuiz(quiz.mode);
+    else if (a === "pick") pick(+t.getAttribute("data-i"));
+    else if (a === "flag") toggleFlag();
+    else if (a === "next") next();
+    else if (a === "quit") { quiz = null; go("home"); }
+    else if (a === "out") { var w = t.getAttribute("data-w"); delete state.box[w]; persist(); renderBox(); }
+    else if (a === "exp-all") exportOrCopy("exp", allRows(), "words.csv");
+    else if (a === "copy-all") exportOrCopy("copy", allRows());
+    else if (a === "exp-box") exportOrCopy("exp", boxRows(), "box.csv");
+    else if (a === "copy-box") exportOrCopy("copy", boxRows());
+    else if (a === "reset-words") { drop(WKEY); words = toWords(WORDS_DEFAULT); indexWords(); message = "初期データ（" + words.length + "語）に戻しました。"; renderHome(); }
+    else if (a === "reset-stats") {
+      if (!confirmReset) { confirmReset = true; renderHome(); var d = app.querySelector("details"); if (d) d.open = true; }
+      else { state.box = {}; state.stats = {}; persist(); confirmReset = false; message = "学習記録と箱を消しました。"; renderHome(); }
+    }
+  });
+  document.addEventListener("change", function (e) {
+    if (e.target.id === "nsel") { state.settings.n = +e.target.value; persist(); }
+    else if (e.target.id === "roc") { state.settings.removeOnCorrect = e.target.checked; persist(); }
+    else if (e.target.id === "impfile" && e.target.files[0]) doImport(e.target.files[0]);
+  });
+  document.addEventListener("keydown", function (e) {
+    if (!quiz || quiz.done || e.metaKey || e.ctrlKey || e.altKey) return;
+    var q = quiz.qs[quiz.i];
+    if (q.picked === null && e.key >= "1" && e.key <= "4") { pick(+e.key - 1); e.preventDefault(); }
+    else if (q.picked !== null && (e.key === "Enter" || e.key === " ")) { next(); e.preventDefault(); }
+    else if (e.key === "c" || e.key === "C") { toggleFlag(); }
+  });
+
+  renderHome();
+  if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  }
+})();
+</script>
+</body>
+</html>
