@@ -85,6 +85,8 @@ details > div { display: flex; flex-direction: column; gap: 10px; margin-top: 8p
 .chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
 .chip.box { background: var(--box-soft); color: var(--box); }
 .chip.bad { background: var(--bad-soft); color: var(--bad); }
+.quizcard { justify-content: space-between; min-height: calc(100vh - 150px); min-height: calc(100dvh - 150px); }
+.qtop, .qbottom { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .word { font-family: var(--font-word); font-size: 32px; line-height: 1.2; font-weight: 700; overflow-wrap: anywhere; }
 .choices { display: grid; gap: 8px; }
 .choice { display: flex; gap: 12px; align-items: flex-start; text-align: left; border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 12px; min-height: 52px; width: 100%; }
@@ -332,20 +334,21 @@ details > div { display: flex; flex-direction: column; gap: 10px; margin-top: 8p
       if (answered) { if (i === q.correct) cls += " good"; else if (i === q.picked) cls += " bad"; }
       return '<button class="' + cls + '" data-act="pick" data-i="' + i + '"' + (answered ? " disabled" : "") + '><span class="k">' + (i + 1) + '</span><span class="t">' + esc(m) + "</span></button>";
     }).join("");
-    var fb = "";
+    // 単語と判定は画面の上、選択肢と操作ボタンは画面の下に分けて置く（単語を見ているときに選択肢が視界に入らないようにする）
+    var verdict = "", nextBtn = "";
     if (answered) {
       var ok = q.picked === q.correct;
-      fb = '<div class="feedback"><div class="verdict ' + (ok ? "ok" : "ng") + '">' + (ok ? "正解" : "不正解") +
-        "<span>" + esc(q.word.w) + " = " + esc(q.word.m) + "</span></div>" +
-        '<button class="btn primary" data-act="next">' + (quiz.i === N - 1 ? "結果を見る" : "次へ") + "</button></div>";
+      verdict = '<div class="verdict ' + (ok ? "ok" : "ng") + '">' + (ok ? "正解" : "不正解") +
+        "<span>" + esc(q.word.w) + " = " + esc(q.word.m) + "</span></div>";
+      nextBtn = '<button class="btn primary" data-act="next">' + (quiz.i === N - 1 ? "結果を見る" : "次へ") + "</button>";
     }
     app.innerHTML =
       '<div class="qhead"><button class="link" data-act="quit">中止</button><div class="track"><div class="fill" style="width:' + (quiz.i + (answered ? 1 : 0)) / N * 100 + '%"></div></div><span class="count">' + (quiz.i + 1) + " / " + N + "</span></div>" +
-      '<section class="card"><div class="meta"><span class="chip">' + posLabel(q.word.p) + "</span>" + (quiz.mode === "box" ? '<span class="chip box">箱から</span>' : "") + "</div>" +
-      '<h2 class="word">' + esc(q.word.w) + "</h2>" +
-      '<div class="choices">' + ch + "</div>" +
+      '<section class="card quizcard"><div class="qtop"><div class="meta"><span class="chip">' + posLabel(q.word.p) + "</span>" + (quiz.mode === "box" ? '<span class="chip box">箱から</span>' : "") + "</div>" +
+      '<h2 class="word">' + esc(q.word.w) + "</h2>" + verdict + "</div>" +
+      '<div class="qbottom"><div class="choices">' + ch + "</div>" +
       '<button class="flag" role="checkbox" aria-checked="' + q.flag + '" data-act="flag"><span class="cb">✓</span><span>自信がない・あとで復習する（箱に入れる）</span></button>' +
-      fb + "</section>";
+      nextBtn + "</div></section>";
   }
 
   function pick(i) {
